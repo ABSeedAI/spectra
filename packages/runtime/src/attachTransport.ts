@@ -28,7 +28,7 @@
  *   pong               { }                                reply to a ping
  *
  * Coordinator → runtime (this side receives):
- *   turn               { sessionId, prompt, unattended? } start a turn
+ *   turn               { sessionId, projectId?, prompt, unattended? } start a turn (projectId scopes a user-global @spec)
  *   decision           { approvalId, decision, note? }    deliver a human's approval decision
  *   ping               { }                                keepalive
  *
@@ -112,8 +112,11 @@ export function serveAttach(engine: Engine, opts: AttachOptions): Attachment {
         const sessionId = typeof frame.sessionId === 'string' ? frame.sessionId : ''
         const prompt = typeof frame.prompt === 'string' ? frame.prompt.trim() : ''
         if (!sessionId || !prompt) return
+        // The project this turn is for — set by a coordinator that routes a user-global @spec across
+        // projects. Absent for a project-pinned runtime (@coder), which acts on its own project.
+        const projectId = typeof frame.projectId === 'string' ? frame.projectId : undefined
         ensureSubscribed(sessionId)
-        const result = engine.submitTurn(sessionId, prompt, frame.unattended === true)
+        const result = engine.submitTurn(sessionId, prompt, frame.unattended === true, projectId)
         // No response channel as HTTP had; a rejected (busy) turn is surfaced as a session error,
         // which the coordinator records like any other.
         if (!result.ok) send({ t: 'error', sessionId, text: result.error })

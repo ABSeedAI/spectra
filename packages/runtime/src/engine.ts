@@ -44,6 +44,12 @@ export interface EngineOptions {
   /** The Server's per-project MCP endpoint this runtime's profile fetch and tool calls act on. */
   mcpUrl: string
   /**
+   * Build the MCP endpoint for a specific project, for a runtime that serves more than one (a
+   * user-global @spec, which picks the project per turn). When a turn carries a projectId and this is
+   * set, the run uses it instead of the fixed {@link mcpUrl}; otherwise {@link mcpUrl} stands.
+   */
+  mcpUrlFor?: (projectId: string) => string
+  /**
    * A bearer token sent on the profile fetch and every MCP tool call, when set. In the sandbox the
    * Server trusts the network and this is unset; a hosted coordinator authenticates each call with it
    * (the device token) to resolve the user, so a write is attributed to the human who ran the turn.
@@ -57,8 +63,11 @@ export interface EngineOptions {
 export type Result = { ok: true } | { ok: false; error: string }
 
 export interface Engine {
-  /** Records nothing; launches the agent. Returns immediately — output arrives over `subscribe`. */
-  submitTurn(sessionId: string, prompt: string, unattended: boolean): Result
+  /**
+   * Records nothing; launches the agent. Returns immediately — output arrives over `subscribe`.
+   * `projectId` scopes this turn's glossary for a user-global runtime; omitted, the fixed mcpUrl stands.
+   */
+  submitTurn(sessionId: string, prompt: string, unattended: boolean, projectId?: string): Result
   /** Delivers a human's approval decision to the run blocked on it. */
   submitDecision(approvalId: string, decision: 'allow' | 'deny', note: string | null): Result
   /** Streams a session's events until the returned unsubscribe is called. */
@@ -102,8 +111,8 @@ export function createEngine(opts: EngineOptions): Engine {
   /** The auth header sent with the profile fetch and MCP calls, or none when no token is configured. */
   const authHeaders: Record<string, string> = opts.authToken ? { Authorization: `Bearer ${opts.authToken}` } : {}
 
-  async function profile(): Promise<Profile> {
-    const response = await fetch(`${opts.mcpUrl}/profile`, { signal: AbortSignal.timeout(5_000), headers: authHeaders })
+  async function profile(mcpUrl: string): Promise<Profile> {
+    const response = await fetch(`${mcpUrl}/profile`, { signal: AbortSignal.timeout(5_000), headers: authHeaders })
     if (!response.ok) throw new Error(`The spec tool answered ${response.status} for the agent profile.`)
     return (await response.json()) as Profile
   }
@@ -157,18 +166,21 @@ export function createEngine(opts: EngineOptions): Engine {
     }
   }
 
-  async function run(sessionId: string, prompt: string, unattended: boolean): Promise<void> {
+  async function run(sessionId: string, prompt: string, unattended: boolean, projectId?: string): Promise<void> {
     const resume = sdkSessions.get(sessionId)
+    // A user-global runtime (@spec) picks the project per turn; a pinned one (@coder) has no projectId
+    // forwarded — or it equals its own — so the fixed mcpUrl stands.
+    const mcpUrl = projectId && opts.mcpUrlFor ? opts.mcpUrlFor(projectId) : opts.mcpUrl
 
     let who: Profile
     try {
-      who = await profile()
+      who = await profile(mcpUrl)
     } catch (cause) {
       // Worth failing loudly rather than running blind: an agent that silently lost the
       // glossary will implement something plausible and wrong.
       emit(sessionId, {
         kind: 'error',
-        text: `Cannot reach the spec tool at ${opts.mcpUrl} (${(cause as Error).message}). Not starting a run without it.`,
+        text: `Cannot reach the spec tool at ${mcpUrl} (${(cause as Error).message}). Not starting a run without it.`,
       })
       return
     }
@@ -180,7 +192,7 @@ export function createEngine(opts: EngineOptions): Engine {
           // Over HTTP to the spec tool, not in-process. One definition of these tools exists
           // and it lives with the files they touch. The auth header (when set) rides every tool
           // call so a hosted coordinator can attribute the write to the user who ran the turn.
-          mcpServers: { blueprints: { type: 'http', url: opts.mcpUrl, ...(opts.authToken ? { headers: authHeaders } : {}) } },
+          mcpServers: { blueprints: { type: 'http', url: mcpUrl, ...(opts.authToken ? { headers: authHeaders } : {}) } },
           tools: who.builtins,
           // Reads run freely; anything that changes a file or runs a command is not here,
           // which is what routes it through canUseTool and out to the approval card.
@@ -244,7 +256,8 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   return {
-    profile,
+    // The health-check profile uses the fixed endpoint; per-turn projects are resolved inside run().
+    profile: () => profile(opts.mcpUrl),
 
     subscribe(sessionId, onEvent) {
       const emitter = channel(sessionId)
@@ -266,7 +279,7 @@ export function createEngine(opts: EngineOptions): Engine {
       return { ok: true }
     },
 
-    submitTurn(sessionId, prompt, unattended) {
+    submitTurn(sessionId, prompt, unattended, projectId) {
       // Decided by the coordinator, per turn — never remembered here. A runtime that kept its own
       // "permissions off" state would be a runtime that could keep it on.
       if (active.has(sessionId)) {
@@ -274,7 +287,7 @@ export function createEngine(opts: EngineOptions): Engine {
       }
 
       active.add(sessionId)
-      void run(sessionId, prompt, unattended).finally(() => {
+      void run(sessionId, prompt, unattended, projectId).finally(() => {
         active.delete(sessionId)
         emit(sessionId, { kind: 'done' })
       })

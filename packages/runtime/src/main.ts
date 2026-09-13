@@ -50,7 +50,10 @@ const SERVER_URL = process.env.SERVER_URL ?? process.env.SPEC_URL ?? 'http://ser
 // the example project is the dev default.
 const ORG = process.env.ORG ?? 'local'
 const PROJECT_ID = process.env.PROJECT_ID ?? 'todo'
-const MCP_URL = `${SERVER_URL}/mcp/orgs/${ORG}/projects/${PROJECT_ID}/${AGENT}`
+// The MCP endpoint for a given project. A pinned runtime (@coder) uses its own; a user-global @spec
+// builds it per turn from the project the coordinator forwards.
+const mcpUrlFor = (projectId: string): string => `${SERVER_URL}/mcp/orgs/${ORG}/projects/${projectId}/${AGENT}`
+const MCP_URL = mcpUrlFor(PROJECT_ID)
 
 // serve (default): reached by a coordinator on the same network. attach: dials out to one it cannot
 // be reached from. Kept a plain string so an unknown value fails loudly below rather than silently
@@ -60,7 +63,7 @@ const MODE = process.env.MODE ?? 'serve'
 // The same device token that authenticates the attach WebSocket also authenticates the runtime's
 // glossary (MCP) calls, so a hosted coordinator resolves the user and stamps the write. Unset in the
 // sandbox, where the Server trusts the network.
-const engine = createEngine({ agent: AGENT, appDir: APP_DIR, mcpUrl: MCP_URL, authToken: process.env.DEVICE_TOKEN })
+const engine = createEngine({ agent: AGENT, appDir: APP_DIR, mcpUrl: MCP_URL, mcpUrlFor, authToken: process.env.DEVICE_TOKEN })
 
 if (MODE === 'attach') {
   const url = process.env.COORDINATOR_URL
@@ -71,7 +74,9 @@ if (MODE === 'attach') {
   // Unset is an error, not an empty string: an unauthenticated attach would bind to nobody, so a
   // missing token should fail at the coordinator rather than silently connect as no one.
   const token = process.env.DEVICE_TOKEN ?? ''
-  serveAttach(engine, { agent: AGENT, url, token, projectId: PROJECT_ID })
+  // @coder is pinned to its project (one repo); @spec is user-global — it declares no project so the
+  // coordinator routes any project's turn to it, and it picks the project per turn (mcpUrlFor).
+  serveAttach(engine, { agent: AGENT, url, token, projectId: AGENT === 'coder' ? PROJECT_ID : undefined })
 } else if (MODE === 'serve') {
   serveHttp(engine, { agent: AGENT, port: PORT, appDir: APP_DIR, glossaryUrl: MCP_URL })
 } else {
