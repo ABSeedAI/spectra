@@ -71,7 +71,7 @@ if (MODE === 'attach') {
   // Unset is an error, not an empty string: an unauthenticated attach would bind to nobody, so a
   // missing token should fail at the coordinator rather than silently connect as no one.
   const token = process.env.DEVICE_TOKEN ?? ''
-  serveAttach(engine, { agent: AGENT, url, token })
+  serveAttach(engine, { agent: AGENT, url, token, projectId: PROJECT_ID })
 } else if (MODE === 'serve') {
   serveHttp(engine, { agent: AGENT, port: PORT, appDir: APP_DIR, glossaryUrl: MCP_URL })
 } else {

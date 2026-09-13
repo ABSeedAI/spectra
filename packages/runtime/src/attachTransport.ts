@@ -47,6 +47,11 @@ import type { Engine } from './engine.js'
 export interface AttachOptions {
   /** Which agent this runtime is — announced in `hello` so the coordinator routes turns to it. */
   agent: string
+  /**
+   * The project this runtime serves — announced in `hello` so a coordinator can route per project
+   * (one runtime per project). Omit to be user-global (the coordinator matches it to any project).
+   */
+  projectId?: string
   /** The coordinator's attach endpoint, `ws://` or `wss://`. */
   url: string
   /** Device token identifying this machine's user; sent in `hello` for the coordinator to verify. */
@@ -134,7 +139,7 @@ export function serveAttach(engine: Engine, opts: AttachOptions): Attachment {
 
     ws.addEventListener('open', () => {
       backoff = minBackoff
-      send({ t: 'hello', runtime: opts.agent, version: opts.version ?? '0.0.0', token: opts.token })
+      send({ t: 'hello', runtime: opts.agent, version: opts.version ?? '0.0.0', token: opts.token, project: opts.projectId })
       console.log(`[${opts.agent}] attached to ${opts.url}`)
     })
 
