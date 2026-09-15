@@ -70,18 +70,31 @@ const engine = createEngine({ agent: AGENT, appDir: APP_DIR, mcpUrl: MCP_URL, mc
  * Give @coder a git identity and (when provided) a push credential — provider-neutrally.
  *
  * @coder owns the implementation, which means owning git. The deployment supplies and scopes the
- * credential via `GIT_TOKEN` (a hosted installation token, or a user's PAT for local attach); the
- * engine never learns which forge it is. The credential helper below references `$GIT_TOKEN` as a
- * shell variable, so the token is read from the environment at git-op time and is never written into
- * `~/.gitconfig`. With no `GIT_TOKEN`, @coder still has git for local work; only pushes go
- * unauthenticated. Commit identity defaults are overridable (`GIT_AUTHOR_NAME`/`_EMAIL`).
+ * credential; the engine never learns which forge it is. Two ways to supply it, checked in order —
+ * both keep the secret out of `~/.gitconfig` by referencing shell variables the helper reads at
+ * git-op time:
+ *
+ *   1. `GIT_CREDENTIAL_URL` (dynamic) — the helper `curl`s this URL on every git operation and echoes
+ *      the response verbatim, which must be git's credential format (`username=…`/`password=…` lines).
+ *      This exists because a supplied token can be short-lived (some forges cap them at ~1h): fetching
+ *      per-op means a long session never wedges on an expired credential — the endpoint hands back a
+ *      fresh one. `$DEVICE_TOKEN` (the same token authenticating the runtime elsewhere) rides along as
+ *      a bearer when set, and the URL carries whatever scope the endpoint needs. `|| true` keeps a
+ *      failed fetch from aborting the git op — no output means git just proceeds unauthenticated.
+ *   2. `GIT_TOKEN` (static) — a fixed credential (a user's PAT for local attach, say). The helper
+ *      echoes it directly. Simpler, but it does not survive its own expiry.
+ *
+ * With neither set, @coder still has git for local work; only pushes go unauthenticated. Commit
+ * identity defaults are overridable (`GIT_AUTHOR_NAME`/`_EMAIL`).
  */
 function configureGit(): void {
   try {
     execFileSync('git', ['config', '--global', 'user.name', process.env.GIT_AUTHOR_NAME ?? 'Spectra Coder'])
     execFileSync('git', ['config', '--global', 'user.email', process.env.GIT_AUTHOR_EMAIL ?? 'coder@spectra.local'])
-    if (process.env.GIT_TOKEN) {
-      const username = process.env.GIT_USERNAME ?? 'x-access-token'
+    const username = process.env.GIT_USERNAME ?? 'x-access-token'
+    if (process.env.GIT_CREDENTIAL_URL) {
+      execFileSync('git', ['config', '--global', 'credential.helper', `!f() { curl -fsS -H "Authorization: Bearer $DEVICE_TOKEN" "$GIT_CREDENTIAL_URL" || true; }; f`])
+    } else if (process.env.GIT_TOKEN) {
       execFileSync('git', ['config', '--global', 'credential.helper', `!f() { echo "username=${username}"; echo "password=$GIT_TOKEN"; }; f`])
     }
   } catch (err) {

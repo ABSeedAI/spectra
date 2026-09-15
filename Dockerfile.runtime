@@ -19,8 +19,12 @@ FROM node:22-slim
 # any other write, the push credential is scoped by the deployment (see GIT_TOKEN in main.ts), and
 # what @coder may do to a branch is enforced by the repository's own protection rules — not by the
 # binary's absence.
+#
+# curl is here for the dynamic credential helper (GIT_CREDENTIAL_URL in main.ts): the helper curls a
+# per-op credential so a long session never wedges on a short-lived token. Provider-neutral — it is
+# just an HTTP fetch of whatever the deployment points it at.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates git \
+  && apt-get install -y --no-install-recommends ca-certificates curl git \
   && rm -rf /var/lib/apt/lists/*
 
 # The agent's own dependencies live in the image, separate from the app's. Installing them
