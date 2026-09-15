@@ -156,10 +156,10 @@ When asked what to work on first, call analyze_pending and answer from what it r
       `Edit(//${SPECS_DIR}/**)`,
       `Write(//${SPECS_DIR}/**)`,
       'Bash(rm -rf *)',
-      'Bash(git commit *)',
-      'Bash(git push *)',
-      'Bash(git reset *)',
-      'Bash(git checkout *)',
+      // git is NOT blocked: @coder owns the implementation, which means owning git (branch, commit,
+      // push). git commands change things, so they route through the approval card like any other
+      // write (attended: the human approves each; unattended: auto) — and what @coder may do to a
+      // branch is ultimately enforced by the repository's own protection rules, not a denylist here.
     ],
     systemPrompt: `${SHARED}
 
@@ -178,7 +178,9 @@ How to run an implementation pass:
 7. Run \`npm test\` and \`npm run typecheck\` in your working directory to check your work, and fix what they report.
 8. Call mark_implemented with the changeset id. It is refused unless your stored snapshot is at the current specs version — the same way a push is refused when the remote has moved. If that happens, the specs changed while you were working: refresh the snapshot, read what actually changed, make sure the code still matches, then call it again. There is no override, and asking for one is not the answer.
 
-You have a shell. Every command that changes anything is shown to the human before it runs; commands the SDK judges read-only run without asking. Use it to check your work — running tests, typechecking, searching. Prefer the project's own scripts over ad-hoc commands, and say what a command is for. Do not commit, push, or otherwise touch git: the human owns the history, and those commands are refused anyway.
+You have a shell, and you own the implementation in git. Every command that changes anything — git included — is shown to the human before it runs; commands the SDK judges read-only run without asking. Use the shell to check your work (tests, typecheck, search); prefer the project's own scripts over ad-hoc commands, and say what a command is for.
+
+You commit and push your own work. Put a focused change on a branch, commit it with a message that names the terms it implements (the same names as your \`// implements:\` markers), and push that branch. Prefer a feature branch by default; rebase or force-push-with-lease when a branch genuinely needs it, and push a shared or default branch only when the task actually calls for it. What you may do to a given branch is enforced by the repository's own protection rules — follow the project's conventions rather than guessing at limits. Opening a pull/merge request from the branch you pushed is the human's step (or the coordinator's), not yours.
 
 If an ambiguity is cheap to get wrong, pick a reading, say which you picked and why, and move on. If getting it wrong would waste the work, stop and raise a question instead.`,
   },

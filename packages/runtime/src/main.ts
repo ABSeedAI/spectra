@@ -17,6 +17,7 @@
  *   - `attach` — dials *out* to a coordinator this runtime cannot be reached from (behind NAT),
  *     over one WebSocket. Needs `COORDINATOR_URL` and a `DEVICE_TOKEN`.
  */
+import { execFileSync } from 'node:child_process'
 import { createEngine } from './engine.js'
 import { serveHttp } from './httpTransport.js'
 import { serveAttach } from './attachTransport.js'
@@ -64,6 +65,32 @@ const MODE = process.env.MODE ?? 'serve'
 // glossary (MCP) calls, so a hosted coordinator resolves the user and stamps the write. Unset in the
 // sandbox, where the Server trusts the network.
 const engine = createEngine({ agent: AGENT, appDir: APP_DIR, mcpUrl: MCP_URL, mcpUrlFor, authToken: process.env.DEVICE_TOKEN })
+
+/**
+ * Give @coder a git identity and (when provided) a push credential — provider-neutrally.
+ *
+ * @coder owns the implementation, which means owning git. The deployment supplies and scopes the
+ * credential via `GIT_TOKEN` (a hosted installation token, or a user's PAT for local attach); the
+ * engine never learns which forge it is. The credential helper below references `$GIT_TOKEN` as a
+ * shell variable, so the token is read from the environment at git-op time and is never written into
+ * `~/.gitconfig`. With no `GIT_TOKEN`, @coder still has git for local work; only pushes go
+ * unauthenticated. Commit identity defaults are overridable (`GIT_AUTHOR_NAME`/`_EMAIL`).
+ */
+function configureGit(): void {
+  try {
+    execFileSync('git', ['config', '--global', 'user.name', process.env.GIT_AUTHOR_NAME ?? 'Spectra Coder'])
+    execFileSync('git', ['config', '--global', 'user.email', process.env.GIT_AUTHOR_EMAIL ?? 'coder@spectra.local'])
+    if (process.env.GIT_TOKEN) {
+      const username = process.env.GIT_USERNAME ?? 'x-access-token'
+      execFileSync('git', ['config', '--global', 'credential.helper', `!f() { echo "username=${username}"; echo "password=$GIT_TOKEN"; }; f`])
+    }
+  } catch (err) {
+    console.error('[%s] git configuration failed (pushes may not authenticate):', AGENT, err)
+  }
+}
+
+// Only @coder does git work; @spec has no repo.
+if (AGENT === 'coder') configureGit()
 
 if (MODE === 'attach') {
   const url = process.env.COORDINATOR_URL
