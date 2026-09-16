@@ -463,11 +463,19 @@ button {
 .project-switcher select {
   font: inherit;
   color: inherit;
-  background: var(--surface, transparent);
+  background: transparent;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 3px 6px;
   max-width: 200px;
+}
+
+/* The open dropdown: give options an explicit solid dark background + light text. Without this the
+   popup inherits the (transparent) select background and browsers paint it on their light default,
+   leaving light text on a light ground — invisible until the hover highlight lands. */
+.project-switcher select option {
+  background: var(--panel);
+  color: var(--text);
 }
 
 .project-switcher select:disabled {
