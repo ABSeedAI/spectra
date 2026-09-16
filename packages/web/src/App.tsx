@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react'
 import type { Changeset, Expectation, HighlightKind, Term, TermType } from '@abseed/spectra-core'
 import { computeBacklinks, computeCoverage, connectionsFor } from '@abseed/spectra-core'
 import { apiTransport } from './api.js'
+import { Diagram } from './Diagram.js'
 import {
   ChangesetBar,
   ChangesetReview,
@@ -66,6 +67,7 @@ export function App() {
   const [selectedOps, setSelectedOps] = useState<Set<number>>(new Set())
   const [acknowledged, setAcknowledged] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  const [view, setView] = useState<'terms' | 'diagram'>('terms')
 
   const terms = glossary?.terms ?? EMPTY_TERMS
   const changesets = feed?.changesets ?? EMPTY_CHANGESETS
@@ -202,6 +204,14 @@ export function App() {
         />
         <span className="muted">spec glossary</span>
         <HighlightLegend />
+        <button
+          type="button"
+          className="action"
+          aria-pressed={view === 'diagram'}
+          onClick={() => setView((current) => (current === 'terms' ? 'diagram' : 'terms'))}
+        >
+          {view === 'terms' ? 'Diagram' : 'Terms'}
+        </button>
         {!chatOpen && (
           <button type="button" className="action chat-open" onClick={() => setChatOpen(true)}>
             Chat
@@ -269,6 +279,13 @@ export function App() {
         }
       />
 
+      {view === 'diagram' ? (
+        <div className="panes">
+          <div className="pane pane-diagram">
+            <Diagram terms={display} expectations={expectations} />
+          </div>
+        </div>
+      ) : (
       <div className="panes">
         <div className="pane pane-list">
           <SearchBar
@@ -309,6 +326,7 @@ export function App() {
           )}
         </div>
       </div>
+      )}
       </div>
 
       {chatOpen && (
