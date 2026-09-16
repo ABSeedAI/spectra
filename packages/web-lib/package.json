@@ -1,6 +1,6 @@
 {
   "name": "@abseed/spectra-web-lib",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "The reusable spec-tool UI: presentational components, transport-injected glossary behavior, and the chat subsystem.",
   "private": true,
   "type": "module",
