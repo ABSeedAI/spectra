@@ -116,6 +116,54 @@ describe('toMermaid', () => {
     expect(out).not.toContain('e_004')
   })
 
+  describe('focus', () => {
+    const g = [
+      term({ name: 'Project', attributes: [{ name: 'tasks', valueType: 'ref:Task[]' }] }),
+      term({ name: 'Task', attributes: [{ name: 'project', valueType: 'ref:Project' }] }),
+      term({ name: 'RecurringTask', parent: 'Task', attributes: [{ name: 'priority', valueType: 'ref:Priority' }] }),
+      term({ name: 'Priority', type: 'attribute-type' }),
+      term({ name: 'Unrelated' }),
+    ]
+
+    it('keeps the term and its one-hop neighbourhood, drops the rest', () => {
+      const out = toMermaid(g, { focus: 'Task' })
+      expect(out).toContain('class Task {')
+      expect(out).toContain('class Project {') // Task references it (and is referenced back)
+      expect(out).toContain('class RecurringTask {') // subtype of Task
+      expect(out).not.toContain('class Unrelated') // no connection to Task
+      expect(out).not.toContain('class Priority') // two hops away (via RecurringTask)
+    })
+
+    it('drops an edge that leaves the neighbourhood', () => {
+      const out = toMermaid(g, { focus: 'Task' })
+      expect(out).toContain('Task <|-- RecurringTask')
+      expect(out).toContain('Task --> Project : project')
+      // RecurringTask -> Priority leaves the focused set, so neither the edge nor Priority appears.
+      expect(out).not.toContain('Priority')
+    })
+
+    it('shows only expectations touching a visible term, and only their in-view edges', () => {
+      const out = toMermaid(g, {
+        focus: 'Task',
+        expectations: [
+          expectation({ id: 'e-1', terms: ['Task'] }),
+          expectation({ id: 'e-2', terms: ['Unrelated'] }),
+          expectation({ id: 'e-3', terms: ['Task', 'Priority'] }),
+        ],
+      })
+      expect(out).toContain('e_1 ..> Task')
+      expect(out).not.toContain('e_2') // touches nothing visible
+      expect(out).toContain('e_3 ..> Task')
+      expect(out).not.toContain('e_3 ..> Priority') // Priority is out of view
+    })
+
+    it('falls back to the whole graph when focus names a term not in the glossary', () => {
+      const out = toMermaid(g, { focus: 'Nope' })
+      expect(out).toContain('class Task {')
+      expect(out).toContain('class Unrelated {')
+    })
+  })
+
   it('is deterministic: terms are ordered by name regardless of input order', () => {
     const a = toMermaid([term({ name: 'Zeta' }), term({ name: 'Alpha' })])
     const b = toMermaid([term({ name: 'Alpha' }), term({ name: 'Zeta' })])
