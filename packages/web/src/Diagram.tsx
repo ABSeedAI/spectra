@@ -28,7 +28,19 @@ function ensureInitialized(): void {
 let renderSeq = 0
 
 export function Diagram({ terms, expectations }: { terms: Term[]; expectations: Expectation[] }) {
-  const code = useMemo(() => toMermaid(terms, { expectations }), [terms, expectations])
+  // Focus is the scale lever: a large glossary is unreadable whole, so pick a term and see only its
+  // one-hop neighbourhood. '' means "all terms". Reset the choice if the focused term disappears.
+  const [focus, setFocus] = useState('')
+  const [showExpectations, setShowExpectations] = useState(true)
+  const names = useMemo(() => terms.map((term) => term.name).sort((a, b) => a.localeCompare(b)), [terms])
+  useEffect(() => {
+    if (focus && !names.includes(focus)) setFocus('')
+  }, [names, focus])
+
+  const code = useMemo(
+    () => toMermaid(terms, { expectations: showExpectations ? expectations : [], focus: focus || undefined }),
+    [terms, expectations, focus, showExpectations],
+  )
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -60,15 +72,50 @@ export function Diagram({ terms, expectations }: { terms: Term[]; expectations: 
   }, [code, terms.length])
 
   if (terms.length === 0) return <p className="muted empty">No terms to diagram yet.</p>
-  if (error) {
-    return (
-      <div className="diagram-error">
-        <p className="error">Could not render the diagram: {error}</p>
-        <pre>{code}</pre>
-      </div>
-    )
-  }
-  if (!svg) return <p className="muted empty">Rendering diagram…</p>
-  // The SVG is Mermaid's own sanitized output (securityLevel 'strict'), not user HTML.
-  return <div className="diagram" style={{ overflow: 'auto', padding: '1rem' }} dangerouslySetInnerHTML={{ __html: svg }} />
+
+  const controls = (
+    <div className="diagram-controls" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 1rem' }}>
+      <label htmlFor="diagram-focus" className="muted">
+        Focus
+      </label>
+      <select id="diagram-focus" value={focus} onChange={(event) => setFocus(event.target.value)}>
+        <option value="">All terms</option>
+        {names.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+      {focus && <span className="muted">— {focus} and everything connected to it</span>}
+      {expectations.length > 0 && (
+        <label style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            checked={showExpectations}
+            onChange={(event) => setShowExpectations(event.target.checked)}
+          />
+          Expectations
+        </label>
+      )}
+    </div>
+  )
+
+  const body = error ? (
+    <div className="diagram-error" style={{ padding: '1rem' }}>
+      <p className="error">Could not render the diagram: {error}</p>
+      <pre>{code}</pre>
+    </div>
+  ) : !svg ? (
+    <p className="muted empty">Rendering diagram…</p>
+  ) : (
+    // The SVG is Mermaid's own sanitized output (securityLevel 'strict'), not user HTML.
+    <div className="diagram" style={{ overflow: 'auto', padding: '1rem' }} dangerouslySetInnerHTML={{ __html: svg }} />
+  )
+
+  return (
+    <div className="diagram-wrap">
+      {controls}
+      {body}
+    </div>
+  )
 }
