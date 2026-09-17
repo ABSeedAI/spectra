@@ -63,6 +63,13 @@ export interface Coverage {
    */
   nonFunctional: string[]
   /**
+   * Invariants — domain properties that must always hold. Like non-functional ones they have no
+   * (entity, action) pair to land on (they constrain state across the vocabulary, not one behaviour),
+   * so they are listed here rather than counted into the pair-coverage number, but they are first-class
+   * and reference real terms. Surfaced so the board shows the rules that guard the whole model.
+   */
+  invariants: string[]
+  /**
    * Expectations that disagree with a term's spec, and what they disagree with.
    *
    * These cover nothing and are not gaps either — they are decisions nobody has made. Whoever
@@ -230,6 +237,9 @@ export function computeCoverage(
       ),
     nonFunctional: live
       .filter((expectation) => expectation.kind === 'non-functional')
+      .map((expectation) => expectation.id),
+    invariants: live
+      .filter((expectation) => expectation.kind === 'invariant')
       .map((expectation) => expectation.id),
     contested: contested.flatMap((expectation) =>
       expectation.contested

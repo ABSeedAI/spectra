@@ -41,12 +41,13 @@ function hostTools(store: SpecStore, author: Author): ToolDef[] {
       'It changes nothing and needs no approval: the most it can do is make a check go red.',
       'A functional expectation must be phrased using only glossary vocabulary — term names, attributes, function names. If you cannot write it without naming a button, a screen or a string in the UI, it is not an expectation about the domain and does not belong here.',
       'A non-functional one describes a property of a running build — responsiveness, persistence, accessibility — and is exempt from that rule.',
+      'An invariant is a property of the domain that must ALWAYS hold, not a single case — "a stock transfer conserves total quantity", "an account balance never goes negative", "the sum of ledger entries equals the balance". Use it (not functional) when the rule is universal rather than a given/when/then scenario; like functional ones it must name the terms it constrains.',
       'This is not a question. If the outcome turns on a product decision nobody has made, raise a question instead; an expectation asserts what should happen, so writing one is claiming the answer is already settled.',
       'Check read_expectations first — a near-duplicate is worse than nothing, because two statements of the same rule drift apart.',
       'What you write is read against the glossary before it lands. If it clashes with a spec it is still recorded, with the clash attached, and it will not count as coverage until a human settles which side gives — so read the findings that come back and say what they were.',
     ].join(' '),
     {
-      kind: z.enum(['functional', 'non-functional']),
+      kind: z.enum(['functional', 'non-functional', 'invariant']),
       terms: z
         .array(z.string())
         .describe('Glossary terms this concerns. Name every term involved — coverage is computed from this, so an expectation about an interaction must name both ends.'),

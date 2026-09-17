@@ -149,7 +149,7 @@ export const questionSchema = z
 export const expectationSchema = z
   .object({
     id: z.string().min(1),
-    kind: z.enum(['functional', 'non-functional']),
+    kind: z.enum(['functional', 'non-functional', 'invariant']),
     author: authorSchema.optional(),
     status: z.enum(['draft', 'ready']).default('ready'),
     rev: z.number().int().positive().default(1),
@@ -180,14 +180,15 @@ export const expectationSchema = z
   })
   .strict()
   .superRefine((expectation, ctx) => {
-    // A functional expectation with no terms is coverage that can never be counted — it
-    // would sit in the file and show up against nothing. Non-functional ones are exempt:
-    // "the app survives a refresh" legitimately scopes to no term at all.
-    if (expectation.kind === 'functional' && expectation.terms.length === 0) {
+    // A functional or invariant expectation with no terms names nothing in the vocabulary — it would
+    // sit in the file and constrain nothing. Both are phrased in glossary terms, so both must name at
+    // least one. Non-functional ones are exempt: "the app survives a refresh" legitimately scopes to
+    // no term at all.
+    if ((expectation.kind === 'functional' || expectation.kind === 'invariant') && expectation.terms.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['terms'],
-        message: 'a functional expectation must name at least one glossary term',
+        message: `a ${expectation.kind} expectation must name at least one glossary term`,
       })
     }
     // Self-supersession would make the expectation both live and retired, and the coverage

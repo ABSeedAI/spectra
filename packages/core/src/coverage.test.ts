@@ -135,6 +135,17 @@ describe('pair coverage', () => {
     expect(report.entities.flatMap((entry) => entry.pairs).flatMap((pair) => pair.expectations)).toEqual([])
   })
 
+  it('lists invariants separately, and never counts them as pair coverage', () => {
+    const report = computeCoverage(GLOSSARY, [
+      expectation('e-020', ['Task', 'deleteProject'], { kind: 'invariant', expect: 'a Task always belongs to exactly one Project' }),
+    ])
+
+    expect(report.invariants).toEqual(['e-020'])
+    expect(report.nonFunctional).toEqual([])
+    // Even though it names an (entity, action) pair, an invariant is a property, not pair coverage.
+    expect(report.entities.flatMap((entry) => entry.pairs).flatMap((pair) => pair.expectations)).toEqual([])
+  })
+
   it('reports an expectation naming a term the glossary does not have', () => {
     const report = computeCoverage(GLOSSARY, [expectation('e-011', ['Task', 'Sprint'])])
     expect(report.dangling).toEqual([{ expectation: 'e-011', term: 'Sprint' }])
