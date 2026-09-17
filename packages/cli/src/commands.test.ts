@@ -13,7 +13,9 @@ import {
   composeArgv,
   composeBuildArgv,
   composeStackArgv,
+  coordinatorOrigin,
   deriveServerUrl,
+  relayUrl,
   parseArgs,
   parseAttachArgs,
   parseLoginArgs,
@@ -30,6 +32,44 @@ const ATTACH = '/repo/attach.yaml'
 function attach(flags: Record<string, string>, agent: 'coder' | 'spec' | 'both' = 'both') {
   return { kind: 'attach' as const, flags, agent, dryRun: false, composeFiles: [] }
 }
+
+describe('coordinatorOrigin', () => {
+  it('normalizes every scheme (and a bare host) to the same https origin', () => {
+    for (const input of [
+      'https://c.example',
+      'wss://c.example',
+      'wss://c.example/api/relay/runtime',
+      'c.example',
+      'https://c.example/some/path?q=1',
+    ]) {
+      expect(coordinatorOrigin(input)).toBe('https://c.example')
+    }
+  })
+
+  it('maps ws/http to an http origin', () => {
+    expect(coordinatorOrigin('ws://localhost:8787')).toBe('http://localhost:8787')
+    expect(coordinatorOrigin('http://localhost:8787/x')).toBe('http://localhost:8787')
+  })
+
+  it('trims and returns null for junk', () => {
+    expect(coordinatorOrigin('  https://c.example  ')).toBe('https://c.example')
+    expect(coordinatorOrigin('')).toBeNull()
+    expect(coordinatorOrigin('not a url')).toBeNull()
+  })
+})
+
+describe('relayUrl', () => {
+  it('derives the relay path (so nobody types /api/relay/runtime)', () => {
+    expect(relayUrl('https://c.example')).toBe('wss://c.example/api/relay/runtime')
+    expect(relayUrl('http://localhost:8787')).toBe('ws://localhost:8787/api/relay/runtime')
+  })
+
+  it('round-trips: a bare-origin login still yields a valid relay URL', () => {
+    const origin = coordinatorOrigin('wss://dev.example')! // what the old bare login stored
+    expect(relayUrl(origin)).toBe('wss://dev.example/api/relay/runtime')
+    expect(deriveServerUrl(relayUrl(origin))).toBe('https://dev.example')
+  })
+})
 
 describe('composeArgv (per component)', () => {
   it('maps server -> the server service, with up/down/restart/status/logs', () => {
@@ -230,11 +270,18 @@ describe('spectra attach', () => {
       expect(r).toMatchObject({ kind: 'ok', options: { project: 'flag' } })
     })
 
-    it('errors on a missing coordinator, project, or token, and on a non-ws scheme', () => {
+    it('errors on a missing coordinator, project, or token, or unparseable coordinator', () => {
       expect(resolveAttach(attach({ project: 'p', token: 't' }), {}, cwd)).toMatchObject({ kind: 'error' })
       expect(resolveAttach(attach({ coordinator: 'wss://h/r', token: 't' }), {}, cwd)).toMatchObject({ kind: 'error' })
       expect(resolveAttach(attach({ coordinator: 'wss://h/r', project: 'p' }), {}, cwd)).toMatchObject({ kind: 'error' })
-      expect(resolveAttach(attach({ coordinator: 'https://h/r', project: 'p', token: 't' }), {}, cwd)).toMatchObject({ kind: 'error' })
+      expect(resolveAttach(attach({ coordinator: 'not a url', project: 'p', token: 't' }), {}, cwd)).toMatchObject({ kind: 'error' })
+    })
+
+    it('accepts an https:// (or bare) coordinator and derives the relay URL + server origin', () => {
+      expect(resolveAttach(attach({ coordinator: 'https://h', project: 'p', token: 't' }), {}, cwd)).toMatchObject({
+        kind: 'ok',
+        options: { coordinator: 'wss://h/api/relay/runtime', server: 'https://h' },
+      })
     })
   })
 

@@ -13,18 +13,15 @@ import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import os from 'node:os'
-import { deriveServerUrl, LOGIN_USAGE, parseLoginArgs, parseLogoutArgs } from './commands.js'
+import { coordinatorOrigin, LOGIN_USAGE, parseLoginArgs, parseLogoutArgs } from './commands.js'
 import { readCredentials, removeCredential, storeCredential } from './credentials.js'
 
 /** Resolve + validate a coordinator into its origin, or return an error message. */
-function coordinatorOrigin(coordinator: string | undefined): { origin: string; coordinator: string } | { error: string } {
-  if (!coordinator) return { error: 'login needs --coordinator (a ws:// or wss:// relay URL), or set COORDINATOR_URL.' }
-  try {
-    if (!/^wss?:$/.test(new URL(coordinator).protocol)) throw new Error('scheme')
-    return { origin: deriveServerUrl(coordinator), coordinator }
-  } catch {
-    return { error: `--coordinator must be a ws:// or wss:// URL, got "${coordinator}".` }
-  }
+function resolveLoginOrigin(coordinator: string | undefined): { origin: string } | { error: string } {
+  if (!coordinator) return { error: 'login needs --coordinator (e.g. https://your-coordinator or wss://…), or set COORDINATOR_URL.' }
+  const origin = coordinatorOrigin(coordinator)
+  if (!origin) return { error: `Not a valid coordinator URL or host: "${coordinator}".` }
+  return { origin }
 }
 
 /**
@@ -103,9 +100,9 @@ export async function runLogin(argv: string[], configHome: string, env: NodeJS.P
   if (parsed.kind === 'help') return void console.log(LOGIN_USAGE), 0
   if (parsed.kind === 'error') return void console.error(parsed.message), void console.error('\nRun `spectra login --help` for usage.'), 2
 
-  const resolved = coordinatorOrigin(parsed.coordinator ?? env.COORDINATOR_URL)
+  const resolved = resolveLoginOrigin(parsed.coordinator ?? env.COORDINATOR_URL)
   if ('error' in resolved) return void console.error(resolved.error), 2
-  const { origin, coordinator } = resolved
+  const { origin } = resolved
   const label = parsed.label?.trim() || os.hostname()
 
   const { port, code } = await awaitCode()
@@ -133,7 +130,9 @@ export async function runLogin(argv: string[], configHome: string, env: NodeJS.P
     return 1
   }
 
-  storeCredential(configHome, origin, { token: body.token, label: body.label ?? label, coordinator, createdAt: new Date().toISOString() })
+  // Store the canonical origin as the coordinator too, so `attach` derives the relay URL from it (and
+  // never depends on whatever scheme/path was typed at login).
+  storeCredential(configHome, origin, { token: body.token, label: body.label ?? label, coordinator: origin, createdAt: new Date().toISOString() })
   console.log(`✓ Logged in to ${origin} as "${body.label ?? label}". \`spectra attach\` will use this token.`)
   return 0
 }
@@ -149,7 +148,7 @@ export function runLogout(argv: string[], configHome: string, env: NodeJS.Proces
     const stored = Object.values(readCredentials(configHome))
     if (stored.length === 1) coordinator = stored[0]!.coordinator
   }
-  const resolved = coordinatorOrigin(coordinator)
+  const resolved = resolveLoginOrigin(coordinator)
   if ('error' in resolved) return void console.error(resolved.error), 2
 
   const removed = removeCredential(configHome, resolved.origin)
