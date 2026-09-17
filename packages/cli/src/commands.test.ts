@@ -30,7 +30,7 @@ const ATTACH = '/repo/attach.yaml'
 
 /** A parsed attach intent, for feeding resolveAttach in tests. */
 function attach(flags: Record<string, string>, agent: 'coder' | 'spec' | 'both' = 'both') {
-  return { kind: 'attach' as const, flags, agent, dryRun: false, composeFiles: [] }
+  return { kind: 'attach' as const, flags, agent, dryRun: false, build: false, composeFiles: [] }
 }
 
 describe('coordinatorOrigin', () => {
@@ -221,8 +221,16 @@ describe('spectra attach', () => {
         flags: { coordinator: 'wss://h/api/relay/runtime', project: 'p1', org: 'acme', token: 't', dir: '/w', server: 'https://h' },
         agent: 'coder',
         dryRun: true,
+        build: false,
         composeFiles: [ATTACH],
       })
+    })
+
+    it('parses --build, and --ref implies build', () => {
+      expect(parseAttachArgs(['--project', 'p', '--build'])).toMatchObject({ kind: 'attach', build: true })
+      const withRef = parseAttachArgs(['--project', 'p', '--ref', 'v0.8.0'])
+      expect(withRef).toMatchObject({ kind: 'attach', build: true, flags: { ref: 'v0.8.0' } })
+      expect(parseAttachArgs(['--project', 'p'])).toMatchObject({ build: false })
     })
 
     it('defaults to both agents and no dry-run', () => {
@@ -255,7 +263,7 @@ describe('spectra attach', () => {
       const r = resolveAttach(attach({ coordinator: 'wss://h/api/relay/runtime', project: 'p', token: 't' }), {}, cwd)
       expect(r).toEqual({
         kind: 'ok',
-        options: { coordinator: 'wss://h/api/relay/runtime', server: 'https://h', token: 't', org: 'local', project: 'p', dir: '/here', agent: 'both' },
+        options: { coordinator: 'wss://h/api/relay/runtime', server: 'https://h', token: 't', org: 'local', project: 'p', dir: '/here', agent: 'both', build: false, ref: undefined },
       })
     })
 
@@ -302,6 +310,7 @@ describe('spectra attach', () => {
       expect(attachComposeArgv('both', [ATTACH])).toEqual(['-f', ATTACH, 'up'])
       expect(attachComposeArgv('coder', [ATTACH])).toEqual(['-f', ATTACH, 'up', 'coder'])
       expect(attachComposeArgv('spec', [ATTACH], '/cfg/spectra.env')).toEqual(['--env-file', '/cfg/spectra.env', '-f', ATTACH, 'up', 'spec'])
+      expect(attachComposeArgv('coder', [ATTACH], undefined, true)).toEqual(['-f', ATTACH, 'up', '--build', 'coder'])
     })
   })
 })

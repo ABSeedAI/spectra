@@ -182,10 +182,12 @@ export interface AttachFlags {
   org?: string
   project?: string
   dir?: string
+  /** Pin the runtime image's source ref (SPECTRA_REF for the compose build context). Implies --build. */
+  ref?: string
 }
 
 export type AttachParsed =
-  | { kind: 'attach'; flags: AttachFlags; agent: AttachAgent; dryRun: boolean; composeFiles: string[] }
+  | { kind: 'attach'; flags: AttachFlags; agent: AttachAgent; dryRun: boolean; build: boolean; composeFiles: string[] }
   | { kind: 'help' }
   | { kind: 'error'; message: string }
 
@@ -198,9 +200,13 @@ export interface AttachOptions {
   project: string
   dir: string
   agent: AttachAgent
+  /** Rebuild the runtime image before starting (docker compose up --build). */
+  build: boolean
+  /** SPECTRA_REF to build the image from, when pinned; undefined uses the compose default. */
+  ref?: string
 }
 
-const ATTACH_VALUE_FLAGS = new Set(['--coordinator', '--server', '--token', '--org', '--project', '--dir', '--agent', '--compose-file'])
+const ATTACH_VALUE_FLAGS = new Set(['--coordinator', '--server', '--token', '--org', '--project', '--dir', '--agent', '--compose-file', '--ref'])
 
 /**
  * Parse the argv tail after `attach`. Collects flags without applying defaults or reading env — that
@@ -212,12 +218,17 @@ export function parseAttachArgs(argv: string[]): AttachParsed {
   const composeFiles: string[] = []
   let agent: AttachAgent = 'both'
   let dryRun = false
+  let build = false
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!
     if (arg === '-h' || arg === '--help') return { kind: 'help' }
     if (arg === '--dry-run') {
       dryRun = true
+      continue
+    }
+    if (arg === '--build') {
+      build = true
       continue
     }
     if (!ATTACH_VALUE_FLAGS.has(arg)) return { kind: 'error', message: `Unknown option "${arg}".` }
@@ -236,7 +247,8 @@ export function parseAttachArgs(argv: string[]): AttachParsed {
     }
   }
 
-  return { kind: 'attach', flags, agent, dryRun, composeFiles }
+  // A pinned --ref only takes effect on a rebuild, so it implies --build.
+  return { kind: 'attach', flags, agent, dryRun, build: build || flags.ref !== undefined, composeFiles }
 }
 
 /** The coordinator's HTTP origin — where the runtime's /mcp tool calls go — from its ws(s) relay URL. */
@@ -318,6 +330,8 @@ export function resolveAttach(
       project,
       dir: flags.dir ?? cwd,
       agent: parsed.agent,
+      build: parsed.build,
+      ref: flags.ref,
     },
   }
 }
@@ -337,10 +351,15 @@ export function attachEnv(options: AttachOptions): Record<string, string> {
   }
 }
 
-/** The `docker compose` argv for attach: a foreground `up` (no `-d`) of one agent service or both. */
-export function attachComposeArgv(agent: AttachAgent, composeFiles: string[], envFile?: string): string[] {
+/**
+ * The `docker compose` argv for attach: a foreground `up` (no `-d`) of one agent service or both.
+ * `build` adds `--build` so a stale runtime image is rebuilt from the (possibly `--ref`-pinned) source
+ * — otherwise `up` reuses the cached image, which is how an old image (e.g. one built before a change
+ * landed) keeps getting run after an upgrade.
+ */
+export function attachComposeArgv(agent: AttachAgent, composeFiles: string[], envFile?: string, build = false): string[] {
   const services = agent === 'both' ? [] : [agent]
-  return [...topLevelFlags(composeFiles, envFile), 'up', ...services]
+  return [...topLevelFlags(composeFiles, envFile), 'up', ...(build ? ['--build'] : []), ...services]
 }
 
 // ── `spectra login` / `spectra logout` ───────────────────────────────────────────────────────────
@@ -460,12 +479,14 @@ Options:
   --server <url>        coordinator origin for tool calls (default: derived from --coordinator)
   --dir <path>          project @coder implements into    (default: current directory)
   --agent <which>       coder | spec | both               (default: both)
+  --build               rebuild the runtime image before starting (use after an upgrade)
+  --ref <tag>           build the image from this source ref (SPECTRA_REF); implies --build
   --dry-run             print the docker compose command instead of running it
   --compose-file <path> override attach.yaml
   -h, --help            show this help
 
-The model credential (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN) is read from
-~/.config/spectra/spectra.env, the same file the rest of the CLI uses.
+The model credential (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN), and an optional
+GIT_TOKEN so @coder can push, are read from ~/.config/spectra/spectra.env.
 
 Example:
   spectra attach --coordinator https://<host> --org acme --project acme-9f2 --token <token>`

@@ -88,6 +88,11 @@ const CREDENTIAL_SCAFFOLD = `# Spectra credential — handed to the stack on \`s
 #
 # Optional — text-to-speech (ElevenLabs); the browser reads replies aloud when this is set:
 # ELEVENLABS_API_KEY=
+#
+# Optional — git push credential for local @coder (\`spectra attach\`). A personal access token from
+# your repo host, so @coder can push its work. Without it, @coder commits locally but can't push.
+# GIT_TOKEN=
+# GIT_USERNAME=        # optional; defaults to x-access-token
 `
 
 /**

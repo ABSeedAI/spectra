@@ -35,6 +35,10 @@ services:
       - PROJECT_ID=${PROJECT_ID}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Optional git push credential (a user PAT in spectra.env) so local @coder can push — forge-neutral,
+      # fed to a git credential helper by the runtime. Absent → local commits work, pushes unauthenticated.
+      - GIT_TOKEN=${GIT_TOKEN:-}
+      - GIT_USERNAME=${GIT_USERNAME:-}
     mem_limit: 2g
     pids_limit: 512
     security_opt:
