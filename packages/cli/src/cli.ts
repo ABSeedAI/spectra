@@ -18,7 +18,8 @@ import {
   composeArgv,
   composeBuildArgv,
   composeStackArgv,
-  deriveServerUrl,
+  coordinatorOrigin,
+  relayUrl,
   parseArgs,
   parseAttachArgs,
   parseProjectsArgs,
@@ -139,13 +140,16 @@ function runInit(argv: string[]): number {
  * if `spectra login` saved exactly one, that; else an error (none, or several to choose among).
  * Shared by `attach` and `projects` so "you're logged into one place" means the flag is optional.
  */
-function resolveCoordinator(flag: string | undefined): { coordinator: string } | { error: string } {
+function resolveCoordinator(flag: string | undefined): { origin: string } | { error: string } {
   const chosen = flag ?? process.env.COORDINATOR_URL
-  if (chosen) return { coordinator: chosen }
-  const logins = Object.values(readCredentials(configHome()))
-  if (logins.length === 1) return { coordinator: logins[0]!.coordinator }
-  if (logins.length === 0) return { error: 'No coordinator: pass --coordinator, or run `spectra login` first.' }
-  return { error: `Several coordinators are logged in — pass --coordinator to pick one:\n${logins.map((c) => `  ${c.coordinator}`).join('\n')}` }
+  if (chosen) {
+    const origin = coordinatorOrigin(chosen)
+    return origin ? { origin } : { error: `Not a valid coordinator URL or host: "${chosen}".` }
+  }
+  const origins = [...new Set(Object.values(readCredentials(configHome())).map((c) => coordinatorOrigin(c.coordinator)).filter((o): o is string => !!o))]
+  if (origins.length === 1) return { origin: origins[0]! }
+  if (origins.length === 0) return { error: 'No coordinator: pass --coordinator, or run `spectra login` first.' }
+  return { error: `Several coordinators are logged in — pass --coordinator to pick one:\n${origins.map((o) => `  ${o}`).join('\n')}` }
 }
 
 /**
@@ -170,16 +174,10 @@ async function runProjects(argv: string[]): Promise<number> {
     console.error(coord.error)
     return 2
   }
-  let origin: string
-  try {
-    origin = deriveServerUrl(coord.coordinator)
-  } catch {
-    console.error(`Invalid coordinator URL: ${coord.coordinator}`)
-    return 2
-  }
+  const origin = coord.origin
   const token = tokenFor(configHome(), origin)
   if (!token) {
-    console.error(`Not logged in to ${origin}. Run:  spectra login --coordinator ${coord.coordinator}`)
+    console.error(`Not logged in to ${origin}. Run:  spectra login --coordinator ${origin}`)
     return 1
   }
 
@@ -202,8 +200,11 @@ async function runProjects(argv: string[]): Promise<number> {
   }
 
   console.log(`Projects on ${origin}:`)
-  for (const project of projects) console.log(`  ${project.org}/${project.id}  —  ${project.name}`)
-  console.log('\nAttach with:  spectra attach --org <org> --project <id> --dir <path>')
+  for (const project of projects) {
+    console.log(`  ${project.org}/${project.id}  —  ${project.name}`)
+    console.log(`      spectra attach --org ${project.org} --project ${project.id} --agent coder`)
+  }
+  console.log('\n(run the line under a project from the repo you want @coder to work in)')
   return 0
 }
 
@@ -233,14 +234,12 @@ function runAttach(argv: string[]): Promise<number> | number {
     console.error('\nRun `spectra attach --help` for usage.')
     return 2
   }
-  const patch: Record<string, string> = { COORDINATOR_URL: coord.coordinator }
+  // Derive the relay URL (…/api/relay/runtime) from the origin, so no one has to type the path and a
+  // bare/https login still dials the right endpoint.
+  const patch: Record<string, string> = { COORDINATOR_URL: relayUrl(coord.origin) }
   if (!process.env.DEVICE_TOKEN) {
-    try {
-      const stored = tokenFor(configHome(), deriveServerUrl(coord.coordinator))
-      if (stored) patch.DEVICE_TOKEN = stored
-    } catch {
-      // A malformed coordinator; resolveAttach reports it below.
-    }
+    const stored = tokenFor(configHome(), coord.origin)
+    if (stored) patch.DEVICE_TOKEN = stored
   }
 
   const resolved = resolveAttach(parsed, { ...process.env, ...patch }, process.cwd())

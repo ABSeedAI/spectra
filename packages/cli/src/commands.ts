@@ -248,6 +248,40 @@ export function deriveServerUrl(coordinator: string): string {
 }
 
 /**
+ * The canonical coordinator origin (scheme + host, no path) for any reasonable input — an `https`/
+ * `http`/`ws`/`wss` URL, or a bare host. `wss`/`https` → `https`, `ws`/`http` → `http`, bare → `https`.
+ * This is the one identity a coordinator has: the credential key, the `/api` base, and what the relay
+ * URL is derived from — so `https://c.example`, `wss://c.example`, and `wss://c.example/api/relay/runtime`
+ * all collapse to the same thing. Returns null if the input isn't a parseable host. Pure.
+ */
+export function coordinatorOrigin(input: string): string | null {
+  const trimmed = input.trim()
+  if (!trimmed) return null
+  const withScheme = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`
+  let url: URL
+  try {
+    url = new URL(withScheme)
+  } catch {
+    return null
+  }
+  const scheme = url.protocol === 'wss:' || url.protocol === 'https:' ? 'https:' : url.protocol === 'ws:' || url.protocol === 'http:' ? 'http:' : null
+  if (!scheme || !url.host) return null
+  return `${scheme}//${url.host}`
+}
+
+/**
+ * The relay WebSocket URL the runtime dials, derived from a coordinator origin — so no one ever has to
+ * type `/api/relay/runtime` (getting it wrong makes attach dial the SPA and fail). `https`→`wss`,
+ * `http`→`ws`. Pure.
+ */
+export function relayUrl(origin: string): string {
+  const url = new URL(origin)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.pathname = '/api/relay/runtime'
+  return url.toString()
+}
+
+/**
  * Merge parsed flags with the environment and defaults, and validate. Kept pure by taking `env` and
  * `cwd` as arguments rather than reading them. The token and coordinator may come from the
  * environment (`DEVICE_TOKEN`, `COORDINATOR_URL`) so the panel's printed command can omit the secret
@@ -259,15 +293,14 @@ export function resolveAttach(
   cwd: string,
 ): { kind: 'ok'; options: AttachOptions } | { kind: 'error'; message: string } {
   const { flags } = parsed
-  const coordinator = flags.coordinator ?? env.COORDINATOR_URL
-  if (!coordinator) return { kind: 'error', message: 'attach needs --coordinator (a ws:// or wss:// relay URL).' }
-  let serverFromCoordinator: string
-  try {
-    if (!/^wss?:$/.test(new URL(coordinator).protocol)) throw new Error('scheme')
-    serverFromCoordinator = deriveServerUrl(coordinator)
-  } catch {
-    return { kind: 'error', message: `--coordinator must be a ws:// or wss:// URL, got "${coordinator}".` }
-  }
+  const rawCoordinator = flags.coordinator ?? env.COORDINATOR_URL
+  if (!rawCoordinator) return { kind: 'error', message: 'attach needs --coordinator (a coordinator URL or host).' }
+  // Normalize whatever was given (https/http/ws/wss/bare) to the origin, then derive the relay URL the
+  // runtime dials — so no one has to type `/api/relay/runtime`, and a bare/https value works.
+  const origin = coordinatorOrigin(rawCoordinator)
+  if (!origin) return { kind: 'error', message: `--coordinator must be a URL or host, got "${rawCoordinator}".` }
+  const coordinator = relayUrl(origin)
+  const serverFromCoordinator = origin
 
   const project = flags.project ?? env.PROJECT_ID
   if (!project) return { kind: 'error', message: 'attach needs --project (the id of the remote project).' }
@@ -385,7 +418,7 @@ Usage:
   spectra projects [--coordinator <ws-url>]
 
 Options:
-  --coordinator <url>   ws:// or wss:// relay URL   (env COORDINATOR_URL; optional once logged in)
+  --coordinator <url>   coordinator URL or host (https://…, wss://…, or bare host)   (env COORDINATOR_URL; optional once logged in)
   -h, --help            show this help`
 
 export const LOGIN_USAGE = `spectra login — fetch this machine's device token from a coordinator, via the browser
@@ -398,12 +431,12 @@ Usage:
   spectra logout --coordinator <ws-url>
 
 Options:
-  --coordinator <url>   ws:// or wss:// relay URL of the coordinator   (env COORDINATOR_URL)
+  --coordinator <url>   coordinator URL or host (https://…, wss://…, or bare host)   (env COORDINATOR_URL)
   --label "<name>"      a name for this machine (default: the hostname)
   -h, --help            show this help
 
 Example:
-  spectra login --coordinator wss://<host>/api/relay/runtime`
+  spectra login --coordinator https://<host>`
 
 export const ATTACH_USAGE = `spectra attach — run local agent runtimes against a REMOTE coordinator
 
@@ -415,7 +448,7 @@ Usage:
   spectra attach --coordinator <ws-url> --project <id> [options]
 
 Required (flag or environment):
-  --coordinator <url>   ws:// or wss:// relay URL         (env COORDINATOR_URL; optional once logged in)
+  --coordinator <url>   coordinator URL or host (https://…, wss://…, or bare host)   (env COORDINATOR_URL; optional once logged in)
   --project <id>        the remote project's id           (env PROJECT_ID)
   --token <token>       the device token for this machine (env DEVICE_TOKEN, or run \`spectra login\`)
 
@@ -435,7 +468,7 @@ The model credential (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN) is read from
 ~/.config/spectra/spectra.env, the same file the rest of the CLI uses.
 
 Example:
-  spectra attach --coordinator wss://<host>/api/relay/runtime --org acme --project acme-9f2 --token <token>`
+  spectra attach --coordinator https://<host> --org acme --project acme-9f2 --token <token>`
 
 export const USAGE = `spectra — control the Spectra stack (a thin wrapper over docker compose)
 
