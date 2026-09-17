@@ -253,8 +253,9 @@ function runAttach(argv: string[]): Promise<number> | number {
   const composeFiles = parsed.composeFiles.length > 0 ? parsed.composeFiles : [attachComposeFile()]
   const credential = credentialFilePath(configHome())
   const envFile = existsSync(credential) ? credential : undefined
-  const args = attachComposeArgv(options.agent, composeFiles, envFile)
-  const env = attachEnv(options)
+  const args = attachComposeArgv(options.agent, composeFiles, envFile, options.build)
+  // SPECTRA_REF pins the compose build context (the runtime image source); only meaningful on a build.
+  const env = { ...attachEnv(options), ...(options.ref ? { SPECTRA_REF: options.ref } : {}) }
 
   if (parsed.dryRun) {
     console.log(['docker', 'compose', ...args].join(' '))
