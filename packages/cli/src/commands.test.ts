@@ -278,6 +278,20 @@ describe('spectra attach', () => {
       expect(r).toMatchObject({ kind: 'ok', options: { project: 'flag' } })
     })
 
+    it('resolves --dir to an absolute path against cwd (so "." is where you ran spectra, not the compose dir)', () => {
+      const base = { coordinator: 'wss://h/r', project: 'p', token: 't' }
+      const dirOf = (flags: Record<string, string>): string => {
+        const r = resolveAttach(attach({ ...base, ...flags }), {}, cwd)
+        if (r.kind !== 'ok') throw new Error('expected ok')
+        return r.options.dir
+      }
+      expect(dirOf({ dir: '.' })).toBe('/here')
+      expect(dirOf({ dir: './sub' })).toBe('/here/sub')
+      expect(dirOf({ dir: 'sub' })).toBe('/here/sub')
+      expect(dirOf({ dir: '../elsewhere' })).toBe('/elsewhere')
+      expect(dirOf({ dir: '/abs/path' })).toBe('/abs/path') // an absolute --dir is left as-is
+    })
+
     it('errors on a missing coordinator, project, or token, or unparseable coordinator', () => {
       expect(resolveAttach(attach({ project: 'p', token: 't' }), {}, cwd)).toMatchObject({ kind: 'error' })
       expect(resolveAttach(attach({ coordinator: 'wss://h/r', token: 't' }), {}, cwd)).toMatchObject({ kind: 'error' })

@@ -15,6 +15,7 @@
  * about. There is no separate `install`: `up` builds a missing image on its own, and `build` is
  * here only to pre-build or rebuild on demand.
  */
+import path from 'node:path'
 
 export const COMPONENTS = ['server', 'coder', 'web', 'spec'] as const
 export type Component = (typeof COMPONENTS)[number]
@@ -328,7 +329,11 @@ export function resolveAttach(
       token,
       org: flags.org ?? env.ORG ?? 'local',
       project,
-      dir: flags.dir ?? cwd,
+      // Resolve --dir against the shell's cwd to an ABSOLUTE path. It becomes ATTACH_PROJECT_DIR, a
+      // docker volume source; docker resolves a RELATIVE source against the compose file's directory
+      // (the installed attach.yaml lives in ~/.config/spectra), so a bare "." would mount that config
+      // dir, not where you ran `spectra`. Absolute removes the ambiguity. (No --dir ⇒ cwd, unchanged.)
+      dir: path.resolve(cwd, flags.dir ?? '.'),
       agent: parsed.agent,
       build: parsed.build,
       ref: flags.ref,
