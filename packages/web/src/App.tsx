@@ -282,8 +282,32 @@ export function App() {
       {view === 'diagram' ? (
         <div className="panes">
           <div className="pane pane-diagram">
-            <Diagram terms={display} expectations={expectations} />
+            <Diagram terms={display} expectations={expectations} onSelectTerm={setSelected} />
           </div>
+          {selectedTerm ? (
+            <div className="pane pane-detail" style={{ flex: '0 0 380px', borderLeft: '1px solid var(--line)', overflow: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span className="muted">Selected term</span>
+                <button type="button" className="action" onClick={() => setSelected(null)}>
+                  Close
+                </button>
+              </div>
+              <TermDetail
+                term={selectedTerm}
+                termsByName={displayByName}
+                backlinks={backlinks}
+                known={known}
+                onSelect={setSelected}
+                review={detailReview}
+                expectations={expectations}
+                coverage={coverage}
+                onSupersede={(id: string, draft: SupersedeDraft) => supersede(id, draft)}
+                onRecheck={recheck}
+                onCheck={apiTransport.checkExpectation}
+                busy={busy}
+              />
+            </div>
+          ) : null}
         </div>
       ) : (
       <div className="panes">
