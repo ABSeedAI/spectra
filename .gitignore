@@ -9,3 +9,6 @@ data/
 *.db-wal
 .env
 resume.txt
+
+# Local torture-test scratch notes — kept out of the repo (see spectra-cloud issues #101–104)
+torture_tests.md
