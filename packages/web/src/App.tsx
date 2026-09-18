@@ -8,7 +8,7 @@
  * split is what a `web-lib` would draw the line along. The derived memos stay here because they are
  * pure functions of the loaded glossary and the selection — they need no backend at all.
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { Changeset, Expectation, HighlightKind, Term, TermType } from '@abseed/spectra-core'
 import { computeBacklinks, computeCoverage, connectionsFor } from '@abseed/spectra-core'
 import { apiTransport } from './api.js'
@@ -72,6 +72,11 @@ export function App() {
   const terms = glossary?.terms ?? EMPTY_TERMS
   const changesets = feed?.changesets ?? EMPTY_CHANGESETS
   const openChangeset = changesets.find((changeset) => changeset.id === openId) ?? null
+
+  // STABLE across renders: ChatPanel keys its live-stream effect off this callback's identity, so a
+  // fresh arrow would tear down and re-open the chat stream (clearing then reloading the thread) on
+  // every App re-render — e.g. selecting a term. `load` is itself stable.
+  const handleSpecsChanged = useCallback(() => void load(), [load])
 
   const review = useMemo(
     () => (openChangeset ? reviewChangeset(terms, openChangeset, selectedOps) : null),
@@ -356,7 +361,7 @@ export function App() {
       {chatOpen && (
         <ChatPanel
           entities={entities}
-          onSpecsChanged={() => void load()}
+          onSpecsChanged={handleSpecsChanged}
           onSelectTerm={setSelected}
           onClose={() => setChatOpen(false)}
         />
