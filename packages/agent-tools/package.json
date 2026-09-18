@@ -1,6 +1,6 @@
 {
   "name": "@abseed/spectra-agent-tools",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Spectra's agent tool definitions and the @spec/@coder agent roster — Worker-safe, pure.",
   "private": true,
   "type": "module",

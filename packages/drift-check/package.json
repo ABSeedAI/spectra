@@ -1,6 +1,6 @@
 {
   "name": "@abseed/spectra-drift-check",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Offline drift check between a Spectra glossary and the code that implements it.",
   "type": "module",
   "license": "Apache-2.0",
@@ -11,7 +11,13 @@
     "url": "git+https://github.com/ABSeedAI/spectra.git",
     "directory": "packages/drift-check"
   },
-  "keywords": ["spectra", "spec-driven", "glossary", "drift-check", "vitest"],
+  "keywords": [
+    "spectra",
+    "spec-driven",
+    "glossary",
+    "drift-check",
+    "vitest"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -20,7 +26,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "NOTICE"],
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
   "sideEffects": false,
   "publishConfig": {
     "access": "public"

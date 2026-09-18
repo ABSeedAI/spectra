@@ -205,7 +205,18 @@ export interface Answer {
  * and a demand for an `implements:` marker — none of which mean anything here. It sits in the
  * same tier as Question and Changeset: first-class, references terms, is not one.
  */
-export type ExpectationKind = 'functional' | 'non-functional'
+/**
+ * `functional` — a scenario over the vocabulary (given/when/then), becomes an example test.
+ * `non-functional` — a property of an implementation (latency, a11y, persistence), exempt from the
+ *   vocabulary rule, checked by driving a running build.
+ * `invariant` — a property of the domain that must ALWAYS hold (`on-hand ≥ 0`, `a transfer conserves
+ *   total stock`), not a single case. Like a functional expectation it is phrased in glossary
+ *   vocabulary and names the terms it constrains; unlike one it is universal, so it verifies as a
+ *   *property* (true in every state) rather than a single example. It is a kind of expectation, not a
+ *   rival concept — it reuses the whole Expectation record — because "what must be true" belongs in the
+ *   same layer as "what should happen".
+ */
+export type ExpectationKind = 'functional' | 'non-functional' | 'invariant'
 
 export type ClashKind =
   /** Names a term the glossary does not have. */

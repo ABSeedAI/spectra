@@ -107,8 +107,9 @@ export function checkDrift(
 
   const verified = new Set(verifyMarkers.flatMap((marker) => marker.ids))
   for (const expectation of expectations) {
-    // Only functional expectations are phrased in glossary vocabulary and become a test. A
-    // non-functional one is a property of a build, verified by driving it, so it is exempt here.
+    // Only functional expectations become an example test that a // verifies: marker names. A
+    // non-functional one is a property of a build; an invariant verifies as a property over all
+    // states (the verify-loop's job, not a single marker) — so both are exempt from this check.
     if (expectation.kind === 'functional' && !verified.has(expectation.id)) {
       findings.push({ kind: 'unverified-expectation', message: `${expectation.id} (functional) — no // verifies: marker; nothing tests that the code satisfies it` })
     }
