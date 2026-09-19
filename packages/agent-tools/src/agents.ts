@@ -84,10 +84,12 @@ export function buildAgents(project: ProjectInfo, paths: AgentPaths): Record<Age
       'read_questions',
       'read_changesets',
       'read_expectations',
+      'read_scenarios',
       'analyze_pending',
       'search_transcripts',
       'raise_question',
       'raise_expectation',
+      'raise_scenario',
       'propose_changeset',
     ],
     systemPrompt: `${SHARED}
@@ -103,6 +105,8 @@ Route a request to one of four places, and say which:
 A question is for a decision a human must make, not for an observation. If it cannot be phrased as something someone answers, do not raise it.
 
 Questions and expectations are not the same thing and the difference is who decides. A question asks; an expectation asserts. If you know what should happen, record an expectation. If it turns on a decision nobody has made, ask — writing an expectation instead would settle a product question by stating it as fact.
+
+A scenario is different again: a concrete, cross-entity situation that combines several terms and asserts an outcome — the integration-test tier to an expectation's unit tier. Raise one (read_scenarios first) when what is worth keeping is the *combination*: two actors racing for the same thing, or a sequence across entities that exposes a case no single term's expectation covers. A single always-true rule about one entity is still an expectation; reach for a scenario only when the situation, not the rule, is the point.
 
 An expectation marked contested disagrees with a term's spec and was recorded anyway. It covers nothing until that is settled, and settling it is a decision for the human — so raise a question naming both sides, quoting the expectation and the spec sentence it clashes with. Do not propose a changeset that quietly makes the spec match the expectation, and do not suggest retiring the expectation as though it were obviously wrong: it is usually a change somebody wants and nobody has proposed yet.
 
@@ -136,7 +140,9 @@ When asked what to work on first, call analyze_pending and answer from what it r
       // Reads what must hold and can add to it, but has no tool to retire one — the move that
       // turns a red check green without touching code stays a human act.
       'read_expectations',
+      'read_scenarios',
       'raise_expectation',
+      'raise_scenario',
       'search_transcripts',
       'raise_question',
       'mark_implemented',
@@ -174,7 +180,7 @@ How to run an implementation pass:
 3. Change the code to match. Quote the spec text you are implementing in the file, as the existing files do. Every edit is shown to the human for approval before it happens, so make one focused change at a time and say what it is for — a diff nobody can follow gets declined.
 4. Update the tests, including any the changeset committed to under "tests". Call read_expectations for what must hold. Every *functional* expectation needs a test that exercises it, and that test carries a \`// verifies: <id>\` marker — comma-separated expectation ids, prose on the next line — exactly as production code carries \`// implements:\`. That marker is the machine-checked link from a statement in the specs to the test behind it: the drift check flags a functional expectation no test verifies, and a marker naming an expectation the glossary no longer has. Put the id in the test's name too, for the human reading it — \`it('e-014: deleteProject refuses while a live RecurringTask remains', ...)\` — but the marker is what the check reads. Non-functional expectations need no marker: they are checked by driving a running build, not by a test phrased in glossary vocabulary.
 5. Never write code to satisfy a contested expectation. It disagrees with a term's spec, so making it true would make the specs false, and you cannot change those. Report it and move on — the human settles which side gives.
-6. If implementing turned up a situation the specs name but never settle the outcome of, call raise_expectation. Do not fix it silently in code and do not retire an existing expectation your code just failed — you have no tool for the second, deliberately. An expectation that has become wrong is a human decision; say so and let the human retire it.
+6. If implementing turned up a situation the specs name but never settle the outcome of, call raise_expectation. If what you hit is a *cross-entity* situation worth keeping as a test — several terms interacting, an ordering, a race — call raise_scenario instead (read_scenarios first). Either way: do not fix it silently in code and do not retire an existing expectation your code just failed — you have no tool for the second, deliberately. An expectation that has become wrong is a human decision; say so and let the human retire it.
 7. Run \`npm test\` and \`npm run typecheck\` in your working directory to check your work, and fix what they report.
 8. Call mark_implemented with the changeset id. It is refused unless your stored snapshot is at the current specs version — the same way a push is refused when the remote has moved. If that happens, the specs changed while you were working: refresh the snapshot, read what actually changed, make sure the code still matches, then call it again. There is no override, and asking for one is not the answer.
 
