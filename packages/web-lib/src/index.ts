@@ -20,6 +20,7 @@ export { ChangesetReview } from './components/ChangesetReview.js'
 export { ChatPanel } from './components/ChatPanel.js'
 export { CoveragePanel } from './components/CoveragePanel.js'
 export { QuestionPanel } from './components/QuestionPanel.js'
+export { ScenarioPanel } from './components/ScenarioPanel.js'
 export { ProjectSwitcher } from './components/ProjectSwitcher.js'
 export { SearchBar, filterTerms } from './components/SearchBar.js'
 export { TermDetail } from './components/TermDetail.js'
@@ -42,6 +43,7 @@ export type {
   ChangesetFeed,
   QuestionFeed,
   ExpectationFeed,
+  ScenarioFeed,
   CommitOutcome,
   AnswerOutcome,
   RaiseOutcome,

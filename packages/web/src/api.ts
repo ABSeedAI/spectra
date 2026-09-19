@@ -19,6 +19,7 @@ import type {
   ProjectSummary,
   QuestionFeed,
   RaiseOutcome,
+  ScenarioFeed,
   SupersedeOutcome,
 } from '@abseed/spectra-web-lib'
 
@@ -39,6 +40,7 @@ export type {
   ProjectSummary,
   QuestionFeed,
   RaiseOutcome,
+  ScenarioFeed,
   SupersedeOutcome,
 } from '@abseed/spectra-web-lib'
 
@@ -88,6 +90,11 @@ export function fetchQuestions(): Promise<QuestionFeed> {
  */
 export function fetchExpectations(): Promise<ExpectationFeed> {
   return get<ExpectationFeed>(apiPath(`/expectations`))
+}
+
+/** The stored scenarios — cross-entity spec-level test cases. Read-only in the UI for now. */
+export function fetchScenarios(): Promise<ScenarioFeed> {
+  return get<ScenarioFeed>(apiPath(`/scenarios`))
 }
 
 /** A refused commit (409) is an expected answer, not a transport failure — it comes back as data. */
@@ -196,6 +203,7 @@ export const apiTransport: GlossaryTransport = {
   fetchChangesets,
   fetchQuestions,
   fetchExpectations,
+  fetchScenarios,
   applyChangeset,
   markImplemented,
   rejectChangeset,
