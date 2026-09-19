@@ -49,51 +49,44 @@ npm run dev:sandbox  # the same, with express and @coder in containers (see Sand
 #   ANTHROPIC_API_KEY=sk-ant-api...        console key from console.anthropic.com
 #   CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat...   from `claude setup-token`
 
-npm test           # unit tests: the engine in shared/, the domain in app/
+npm test           # unit tests: core, server, web, cli (each a separate vitest run)
 npm run typecheck
 ```
 
 ## Architecture
 
-Two independent things run here. They share a repo and nothing else.
+The spec tool is one thing; the project it implements *into* is a separate thing it never
+runs. They share only the implementation pass.
 
 ```
-   browser tab                                browser tab
+   browser tab                                the consumer project
 ┌──────────────────────────┐              ┌────────────────────────┐
-│  spec tool         :5173 │              │  ToDo app       :5175  │
-│  vite — react            │              │  vite — react          │
-└────────────┬─────────────┘              │                        │
-             │ /api/* proxied to :5174    │  no server, no API     │
-             ▼                            │  state is in memory,   │
-┌──────────────────────────┐              │  gone on refresh       │
-│  express           :5174 │              └────────────────────────┘
-│                          │                          ▲
-│  reads + writes specs/   │                          ╎
-│  data/transcripts.db     │      the only link is the implementation
-│  runs @spec; relays      │      pass: a human or @coder editing app/
-│  @coder to its sandbox   │╌╌╌╌╌╌to match specs/. Nothing at runtime.
+│  spec tool UI      :5173 │              │  your repo             │
+│  react                   │              │                        │
+└────────────┬─────────────┘              │  @coder implements     │
+             │ /api/* → :5174             │  into it, mounted rw   │
+             ▼                            │  at /work/project      │
+┌──────────────────────────┐              └────────────────────────┘
+│  server (express)  :5174 │                          ▲
+│  owns specs/, data/,     │                          ╎
+│  the model key           │      the only link is the implementation
+│  runs @spec; relays      │      pass: a human or @coder editing the
+│  @coder to its sandbox   │╌╌╌╌╌╌project to match specs/. Nothing at runtime.
 └──────────────────────────┘
 ```
 
-`npm run dev` starts the **spec tool** — both halves of it, express and vite, under one
-`concurrently`. `npm run dev:app` starts the **ToDo app**, separately and on purpose: it is
-the *output* of this tool, not part of it.
+The engine ships with **no glossary** — it operates on whatever `specs/` you point it at
+(`npm run dev` uses `examples/todo/specs/`; an install supplies one through `spectra init`).
+The project `@coder` implements into is **not in this repo**: you link it with `spectra init
+--dir`, and it is mounted read-write into the `@coder` container at `/work/project`, its only
+mount. The project has never heard of `specs/` at runtime — it was written *from* those
+files, which are not present at runtime in any form. If it needed the spec tool running, the
+glossary would be a config format rather than a design-time vocabulary.
 
-`app/` is a standalone npm project, not a workspace: its own `node_modules`, its own
-`tsconfig`, its own copy of TypeScript. Copy the directory anywhere and `npm install &&
-npm test && npm run build` works with no repo around it. That is what lets a sandbox mount
-`app/` and nothing else — a workspace whose dependencies are hoisted to a parent cannot be
-isolated, because half of it lives somewhere the sandbox will not have.
-
-That now includes the `implements:` drift check, which used to be the one thing `app/` could
-not do alone. It compares its markers against `specs.snapshot.json` — a committed file, not
-a directory somewhere else — so it runs anywhere the code runs, including inside a sandbox
-that cannot see `specs/` at all. See **The snapshot** below. The app has never heard of
-`specs/` at runtime: it was written from those files, and they are not present at runtime in
-any form.
-
-That separation is the point. If the app needed the spec tool running, the glossary would
-be a config format rather than a design-time vocabulary.
+The dev `docker-compose.yml` has no consumer project, so it mounts a placeholder at
+`/work/project` and `@coder` is **inert** under plain `npm run dev` until a real project is
+configured. (The example ToDo app that used to be the *output* half of this loop now lives on
+the `backup/todo-app` branch.)
 
 **Talking to it directly.** Everything the chat panel does is plain HTTP through the Vite
 proxy, so curl reaches the same endpoints the browser does:
@@ -139,8 +132,8 @@ boundary that does not.
                                                            │ (internal: true)
                                                   ┌────────┴─────────┐
                                                   │  coder  :5177    │
-                                                  │  app/ rw — the   │
-                                                  │  only mount      │
+                                                  │  /work/project   │
+                                                  │  rw — only mount │
                                                   │  no credential   │
                                                   │  no route out    │
                                                   └──────────────────┘
@@ -177,7 +170,7 @@ What holds, verified with `internal: true` exactly as committed — a full turn,
 | | |
 |---|---|
 | container has no route out | ✅ |
-| `app/` is the only mount and the only writable thing | ✅ |
+| the project at `/work/project` is the only mount and the only writable thing | ✅ |
 | model call reaches the API through `/anthropic` | ✅ |
 | glossary tools arrive over `/mcp/coder` | ✅ 6 tools, from `agents.ts` |
 | a write to `specs/` from inside the sandbox | ✅ raised `q-008` with quoted spec text |
@@ -188,7 +181,7 @@ What holds, verified with `internal: true` exactly as committed — a full turn,
 **One correction the testing produced.** The prompts used to say every command is shown
 before it runs. That is not true: for `Bash` the SDK classifies the command and lets ones it
 judges read-only through without a card. `pwd && ls` ran unprompted; `touch
-/work/app/probe-file` raised a card and was blocked. The card covers commands that *change*
+/work/project/probe-file` raised a card and was blocked. The card covers commands that *change*
 things — the useful guarantee, but not the one that was written down.
 
 **The chat panel uses this.** Messaging `@coder` relays the turn to the container over HTTP
@@ -240,13 +233,15 @@ it is a single click.
 ## The snapshot
 
 The drift check needs two things that sit on opposite sides of the sandbox boundary: the
-markers, which are in `app/`, and the specs, which are in the spec tool. When `specs/` stopped
-being mounted, the check lost half its inputs and started skipping.
+markers, which live in the consumer project, and the specs, which are in the spec tool. When
+`specs/` stopped being mounted, the check lost half its inputs and started skipping.
 
-A tool answering the question live would work and would be wrong — `app/` has to stand alone,
-and a test that needs a service running fails for anyone who does not have one. So the
-contract arrives as a file. `@coder` calls `export_specs` and writes the result to
-`app/specs.snapshot.json`, which is committed with the code:
+A tool answering the question live would work and would be wrong — the project has to stand
+alone, and a test that needs a service running fails for anyone who does not have one. So the
+contract arrives as a file. The check itself ships as the **`@abseed/spectra-drift-check`**
+package — a consumer project adds it as a dev-dependency, and it only reads files, so it runs
+offline, including inside the sandbox. `@coder` calls `export_specs` and writes the result to
+a committed `specs.snapshot.json` beside the code:
 
 ```json
 {
@@ -326,8 +321,8 @@ can verify it.
 ```
 
 **The refusal names versions, never a path.** The spec tool does not know where the
-implementer keeps its code and must not act as though it does — `app/specs.snapshot.json` is
-this repo's arrangement, not part of the protocol. Git rejects a push by naming refs, not by
+implementer keeps its code and must not act as though it does — a project's snapshot path is
+its own arrangement, not part of the protocol. Git rejects a push by naming refs, not by
 telling you where your working copy lives. Same for the tool descriptions: they say "store
 it wherever your project keeps it", and the container reads its own snapshot from its own
 mount and reports the version, so this side never learns the filename at all.
@@ -371,21 +366,24 @@ packages/server/src/        express — spec files, transcripts, and the two age
   agent/tools.ts            the domain tools both agents call
   agent/mcpHttp.ts          the same tools over HTTP, for an agent in another container
   anthropicProxy.ts         the model API, relayed so the sandbox needs no egress or key
-  glossaryExport.ts         the contract as a file, so app/ can check itself offline
+  specsExport.ts            the contract as a file, so a consumer project can check itself offline
   sandbox.ts                whether the @coder container is up, asked from inside its network
 packages/web/src/           react — browse, search, review, apply, chat
 packages/runtime/src/         the sandboxed half of @coder — no history, no writes to specs/
+packages/cli/src/           the `spectra` CLI — argv → docker compose (pure, tested)
+packages/agent-tools/src/   @abseed/spectra-agent-tools — shared agent prompts + tool defs
+packages/drift-check/src/   @abseed/spectra-drift-check — the offline glossary↔code drift check
 Dockerfile.spec             express, on both networks
 Dockerfile.runtime            @coder, on the internal one
 docker-compose.yml          the boundary between them
 docker-compose.open.yml     the explicit escape hatch that removes it
 ```
 
-Ports: **5173** spec tool UI, **5174** its API, **5175** the ToDo app, **5177** the coder
+Ports: **5173** spec tool UI, **5174** its API, **5177** the coder
 container (reachable only from inside the sandbox network). The API serves no HTML —
 hitting `localhost:5174` in a browser gives a 404, which is correct.
 
-The changeset engine lives in `shared/`, not the server: it is pure functions over
+The changeset engine lives in `packages/core`, not the server: it is pure functions over
 in-memory term arrays with no filesystem access. The web app uses it to *preview* what a
 changeset would do and flag problems live as you toggle ops; the server uses the identical
 code to *commit*. One set of rules, so the preview cannot disagree with the result.
@@ -461,6 +459,30 @@ A **Changeset** is how edits are proposed: a structured list of ops, never free 
 
 Ops: `add_entity`, `remove_entity`, `add_attribute`, `remove_attribute`, `modify_spec`.
 
+## What a spec has to capture
+
+A glossary is only as good as the range of things it can say. These are the dimensions a
+real domain pushes on — Spectra's own rubric for where a spec (and this tool) is expressive
+enough, and where it is not.
+
+| Dimension | What it means |
+|---|---|
+| **A** — Entities | The nouns — the things the domain is made of. |
+| **B** — Relationships | How entities connect: is-a (`parent`), has-a (`ref:`), and the backlinks derived from them. |
+| **C** — State machines | Lifecycle and status transitions an entity moves through. |
+| **D** — Temporal / windowing | Time-based logic: periods, windows, resets, schedules, time zones. |
+| **E** — Invariants | Properties that must hold in every state, not just in an example. |
+| **F** — Derived state | Values computed from others (or from an event history), never set directly. |
+| **G** — Authorization | Who may do or see what. |
+| **H** — Concurrency | Simultaneous actions, ordering, and races. |
+| **I** — Idempotency | Doing the same thing twice has the effect of doing it once. |
+| **J** — External events / integration | Signals and events crossing the system boundary. |
+| **K** — Failure / errors | Partial failure, retries, and delivery guarantees. |
+| **L** — Versioning / migration | How the model and its data change over time. |
+| **M** — Non-functional | Performance, latency, and other properties of a running build. |
+| **N** — Human ambiguity | Genuinely under-specified decisions only a human can settle. |
+| **O** — Cross-domain invariants | Rules that span several entities or aggregates. |
+
 ## Reviewing a change
 
 Open a changeset from the bar at the top and it renders as coloured highlights over the
@@ -486,53 +508,10 @@ them. Rejecting moves the whole thing to `rejected/`. Git is the history.
 Written files match the hand-authored format exactly — fixed key order, one line per
 attribute — so an applied change shows up as a one-line diff instead of a reformat.
 
-## The app (M5)
-
-`app/` is the other half of the claim: an actual ToDo app implemented *from*
-`specs/terms/*.json`. In-memory state, its own Vite on :5175, deliberately bare UI. Each
-file that implements a term says so in a header comment —
-
-```ts
-// implements: completeTask
-```
-
-— so a later spec change can be traced to the code that needs updating. There is no
-compiler and no automatic regeneration: re-running the implementation pass after a
-changeset lands is an explicit task each time.
-
-The UI logs what every spec'd function returned, because that is where the spec text is
-either honoured or not: completing a done Task says *"was already done — no change"*
-rather than erroring, and deleting a Project with open Tasks says *"refused — still holds
-2 incomplete Tasks"* rather than cascading. `app/src/domain/domain.test.ts` pins the same
-clauses down as 22 tests.
-
-### What implementing it exposed about the specs
-
-Writing the app is a much harsher reader of the glossary than reviewing it is. The
-implementation pass fixed none of what it found in code — it raised questions instead, in
-`specs/questions/`:
-
-- **q-001 — no creation functions.** The glossary defines `completeTask`, `reopenTask` and
-  `deleteProject`, but nothing that creates a Project or a Task, which is the first thing
-  any user does. `createProject`/`createTask` in `app/src/domain/world.ts` are invented by
-  the implementation and marked as such.
-- **q-002 — `completeTask` on a RecurringTask was underdetermined.** "Marks the current
-  occurrence done and schedules the next occurrence" describes two things happening to one
-  entity with one `done` flag. **Answered**: a RecurringTask reopens at its next occurrence.
-- **q-003 — `recurrenceRule` has no grammar.** Typed as a bare `string`, so the app had to
-  invent one (`weekly`, `every 2 weeks`) and report rules it cannot parse.
-- **q-004 — Projects holding a RecurringTask became undeletable.** Raised by the *second*
-  implementation pass, as a direct consequence of answering q-002: `deleteProject` blocks
-  while any Task is not done, and a RecurringTask now never is.
-
-q-004 is the interesting one. It did not exist until a decision was made, which is the
-argument for the loop being a loop rather than a review step — answers create questions.
-
-## Questions — the loop back from implementation
+## Questions
 
 Changesets carry edits *to* the glossary. Questions carry what the glossary does not
-settle, discovered by trying to build from it. The three in `specs/questions/` are real
-output from the M5 pass, not fixtures.
+settle, discovered by trying to build from it.
 
 The unit is deliberately a **question**, not a "finding". If an entry cannot be phrased as
 something you answer, it does not belong in the queue — that rules out the observations an
@@ -559,9 +538,6 @@ and committing the edit stay separate acts.
 
 Answers are not editable in the UI — a decision that was acted on should not be silently
 overwritten. Change your mind by raising a new question.
-
-That makes the answered questions a machine-readable version of the table below, which is
-currently maintained by hand.
 
 ## Chat
 
@@ -598,7 +574,7 @@ perfectly, reports "agent ready", and then fails every call with `Invalid API ke
 server now checks the prefix on boot and says which variable it belongs in.
 
 **Deeply nested zod defeats the SDK's JSON-Schema conversion, silently.** `raise_question`
-originally reused `proposalSchema` from `shared/`, whose `ops` is a `z.discriminatedUnion`.
+originally reused `proposalSchema` from `packages/core`, whose `ops` is a `z.discriminatedUnion`.
 Nested inside `options[] → proposal → ops[]` that one tool failed to convert, which took
 down the *entire* MCP server — the agent reported having no tools at all, with nothing in
 any log. Every construct involved is fine on its own; only the depth breaks it. The tool
@@ -626,7 +602,7 @@ are live-only, so a reconnect mid-answer waits for the complete message rather t
 stitching fragments. Tool calls record a status, which is what will make resuming an
 interrupted run possible later without a schema change.
 
-## Decisions made along the way
+## Design decisions
 
 | Question | Decision |
 |---|---|
@@ -635,31 +611,3 @@ interrupted run possible later without a schema change.
 | Cherry-pick dependencies | Warn and block; never auto-pull dependent ops |
 | Human write path | Changesets only — no direct term editor |
 | Post-apply | Move to `applied/`; remaining ops stay pending |
-
-## Not in Phase 1
-
-Instance data (type-level specs only), any graph canvas, live AI changeset generation
-(the fixtures in `specs/changesets/` stand in for it), auth, multi-user, collaboration.
-
-## Where this stops
-
-M0–M5 are done: browse, search, review a proposed change, apply it, and implement a
-running app from the result. Questions close the loop in the other direction — the
-implementation pass can now hand back what it could not decide.
-
-The round trip has now run once, end to end: q-002 was answered in the UI, the changeset
-it minted was reviewed and applied, `complete-task.json` changed on disk, the
-implementation pass was re-run over `app/`, and the behaviour changed — a RecurringTask
-now reopens at its next occurrence instead of sitting done. The three tests the changeset
-committed to are in `app/src/domain/domain.test.ts` and pass, and the pass came back with
-q-004.
-
-Re-running the pass is not a command. It is a directed ask — point Claude Code at
-`specs/terms/` and have it update `app/` to match. The `// implements:` markers are what
-make that targetable rather than a rewrite.
-
-The reassess point: whether to wire live AI changeset generation into the spec UI, or move
-to the Phase 2 Pac-Man pilot to stress-test the schema against events and reactive
-fan-out. The three questions are evidence for that call — note that all three came from
-one afternoon of implementing six terms, which says something about how much a schema
-review misses.
