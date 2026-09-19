@@ -4,7 +4,7 @@
  */
 import { z } from 'zod'
 import { TERM_TYPES } from './types.js'
-import type { Changeset, Expectation, ProjectInfo, Question, Term } from './types.js'
+import type { Changeset, Expectation, ProjectInfo, Question, Scenario, Term } from './types.js'
 import { describeValueTypeError, isValueType } from './valueType.js'
 
 const termName = z
@@ -202,6 +202,39 @@ export const expectationSchema = z
     }
   })
 
+/**
+ * A Scenario (see {@link Scenario}). `.strict()` like the rest; the one rule is that it must name a
+ * term — a scenario is cross-entity by definition, so an empty `terms` is almost always a mistake.
+ * `expect` requires at least one assertion (a scenario that asserts nothing proves nothing).
+ */
+export const scenarioSchema = z
+  .object({
+    id: z.string().min(1),
+    title: z.string().min(1),
+    author: authorSchema.optional(),
+    terms: z.array(termName).default([]),
+    given: z.string().default(''),
+    steps: z.array(z.string().min(1)).default([]),
+    expect: z.array(z.string().min(1)).min(1),
+    raisedBy: z
+      .object({
+        pass: z.string().min(1),
+        from: z.string().min(1).optional(),
+        file: z.string().optional(),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((scenario, ctx) => {
+    if (scenario.terms.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['terms'],
+        message: 'a scenario must name at least one glossary term',
+      })
+    }
+  })
+
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; errors: string[] }
 
 function formatIssues(error: z.ZodError): string[] {
@@ -236,6 +269,13 @@ export function parseExpectation(data: unknown): ParseResult<Expectation> {
   const result = expectationSchema.safeParse(data)
   return result.success
     ? { ok: true, value: result.data as Expectation }
+    : { ok: false, errors: formatIssues(result.error) }
+}
+
+export function parseScenario(data: unknown): ParseResult<Scenario> {
+  const result = scenarioSchema.safeParse(data)
+  return result.success
+    ? { ok: true, value: result.data as Scenario }
     : { ok: false, errors: formatIssues(result.error) }
 }
 

@@ -51,6 +51,7 @@ import type {
   Op,
   ProjectInfo,
   Question,
+  Scenario,
   SourceProblem,
   Term,
 } from './types.js'
@@ -88,6 +89,12 @@ export interface ExpectationFeed {
   drafts: Expectation[]
   /** Superseded ones, kept so a test citing a retired id still resolves and the reason survives. */
   retired: Expectation[]
+  problems: SourceProblem[]
+}
+
+export interface ScenarioFeed {
+  /** Stored scenarios — cross-entity, spec-level test cases. */
+  scenarios: Scenario[]
   problems: SourceProblem[]
 }
 
@@ -169,10 +176,12 @@ export interface SpecStore {
   readChangesets(): Promise<PendingChangesets>
   readQuestions(): Promise<QuestionFeed>
   readExpectations(): Promise<ExpectationFeed>
+  readScenarios(): Promise<ScenarioFeed>
 
   findChangeset(id: string): Promise<Changeset | null>
   findQuestion(id: string): Promise<Question | null>
   findExpectation(id: string): Promise<Expectation | null>
+  findScenario(id: string): Promise<Scenario | null>
 
   // ── Id allocation ──────────────────────────────────────────────────────────────────
   // Replaces uniquePath + the per-writer nextId scanners. The store owns id generation
@@ -181,12 +190,14 @@ export interface SpecStore {
   nextChangesetId(): Promise<string> // scans pending + applied + rejected
   nextQuestionId(): Promise<string>
   nextExpectationId(): Promise<string> // counts retired too
+  nextScenarioId(): Promise<string>
 
   // ── Writes ─────────────────────────────────────────────────────────────────────────
   // Validated domain objects in; state transitions are explicit method names.
   addChangeset(changeset: Changeset): Promise<StoredAt> // enters pending
   addQuestion(question: Question): Promise<StoredAt>
   addExpectation(expectation: Expectation): Promise<StoredAt> // enters live
+  addScenario(scenario: Scenario): Promise<StoredAt>
 
   /**
    * Atomic: reconcile terms to the post-image and move the changeset pending → applied. When

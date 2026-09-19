@@ -33,6 +33,7 @@ import {
   parseExpectation,
   parseProjectInfo,
   parseQuestion,
+  parseScenario,
   parseTerm,
 } from '@abseed/spectra-core'
 import type {
@@ -41,6 +42,7 @@ import type {
   Expectation,
   ProjectInfo,
   Question,
+  Scenario,
   SourceProblem,
   Term,
 } from '@abseed/spectra-core'
@@ -53,6 +55,7 @@ import type {
   MutationResult,
   PendingChangesets,
   QuestionFeed,
+  ScenarioFeed,
   SpecStore,
   StoredAt,
 } from '@abseed/spectra-core'
@@ -96,6 +99,12 @@ CREATE TABLE IF NOT EXISTS expectations (
   id TEXT NOT NULL,
   lifecycle TEXT NOT NULL,        -- live | retired  (draft/ready is inside the record's own status)
   rev INTEGER NOT NULL DEFAULT 1,
+  json TEXT NOT NULL,
+  PRIMARY KEY (project_id, id)
+);
+CREATE TABLE IF NOT EXISTS scenarios (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  id TEXT NOT NULL,               -- s-001; add-only in v1 (no lifecycle/rev yet)
   json TEXT NOT NULL,
   PRIMARY KEY (project_id, id)
 );
@@ -267,6 +276,12 @@ export class SqlSpecStore implements SpecStore {
     }
   }
 
+  async readScenarios(): Promise<ScenarioFeed> {
+    const { values, problems } = this.parseRows(this.rows('SELECT json FROM scenarios WHERE project_id = ?'), parseScenario)
+    values.sort((a, b) => a.id.localeCompare(b.id))
+    return { scenarios: values, problems }
+  }
+
   /** The pending changeset with this id — the FS impl's `findChangesetEntry` reads `changesets/` too. */
   async findChangeset(id: string): Promise<Changeset | null> {
     const row = this.db
@@ -298,6 +313,10 @@ export class SqlSpecStore implements SpecStore {
     return this.findKeyed('expectations', id, parseExpectation)
   }
 
+  async findScenario(id: string): Promise<Scenario | null> {
+    return this.findKeyed('scenarios', id, parseScenario)
+  }
+
   // ── Id allocation ──────────────────────────────────────────────────────────────────
   // A `SELECT max` over the whole table for this project, including resolved/retired rows, so an id
   // is never handed out twice — the SQL analogue of the FS impl counting every partition directory.
@@ -318,6 +337,9 @@ export class SqlSpecStore implements SpecStore {
   }
   async nextExpectationId(): Promise<string> {
     return this.nextId('e', 'expectations')
+  }
+  async nextScenarioId(): Promise<string> {
+    return this.nextId('s', 'scenarios')
   }
 
   // ── Simple creates ───────────────────────────────────────────────────────────────────
@@ -341,6 +363,13 @@ export class SqlSpecStore implements SpecStore {
       .prepare("INSERT INTO expectations (project_id, id, lifecycle, rev, json) VALUES (?, ?, 'live', ?, ?)")
       .run(this.projectId, expectation.id, expectation.rev ?? 1, JSON.stringify(expectation))
     return expectation.id
+  }
+
+  async addScenario(scenario: Scenario): Promise<StoredAt> {
+    this.db
+      .prepare('INSERT INTO scenarios (project_id, id, json) VALUES (?, ?, ?)')
+      .run(this.projectId, scenario.id, JSON.stringify(scenario))
+    return scenario.id
   }
 
   // ── State transitions ────────────────────────────────────────────────────────────────

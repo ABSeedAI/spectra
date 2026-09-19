@@ -313,6 +313,43 @@ export interface ExpectationOrigin {
   file?: string
 }
 
+/**
+ * A Scenario — a stored, cross-entity spec-level test case: the integration-test tier to
+ * Expectations' unit tier. Where an Expectation is one Given/When/Then, usually about a single
+ * entity, a Scenario walks a concrete situation across several terms and asserts an outcome — and
+ * its worth is exactly that combination, which is *emergent*, not reconstructable from the
+ * individual entities' expectations. So it is stored rather than re-derived by re-prompting:
+ * curated, versioned, re-openable.
+ *
+ * v1 is deliberately light — add-only; steps and assertions are prose, and simultaneity ("both
+ * check out at once") is stated in that prose. A structured step/concurrency model, the
+ * supersede/verify machinery, coverage and the diagram are later slices.
+ */
+export interface Scenario {
+  id: string
+  /** A short name for the situation — what this scenario is about. */
+  title: string
+  /** Who raised it. Absent on scenarios raised before identity was tracked. */
+  author?: Author
+  /** Glossary terms the scenario touches — cross-entity by nature; at least one. */
+  terms: string[]
+  /** The setup: the initial state across the terms it touches. Empty when there is none. */
+  given: string
+  /** Ordered steps of the walkthrough. Simultaneity is stated in the prose in v1. */
+  steps: string[]
+  /** What must hold — one or more assertions, phrased in glossary vocabulary. */
+  expect: string[]
+  raisedBy: ScenarioOrigin
+}
+
+export interface ScenarioOrigin {
+  /** What was being done when it came up, e.g. `implementation`, `usage`, `review`. */
+  pass: string
+  /** A question, changeset, or expectation it follows from, if any. */
+  from?: string
+  file?: string
+}
+
 export type Severity = 'error' | 'warning'
 
 export interface Diagnostic {

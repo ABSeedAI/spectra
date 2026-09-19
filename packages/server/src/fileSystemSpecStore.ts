@@ -20,6 +20,7 @@ import {
   parseExpectation,
   parseProjectInfo,
   parseQuestion,
+  parseScenario,
   parseTerm,
 } from '@abseed/spectra-core'
 import type {
@@ -28,6 +29,7 @@ import type {
   Expectation,
   ProjectInfo,
   Question,
+  Scenario,
   SourceProblem,
   Term,
 } from '@abseed/spectra-core'
@@ -42,6 +44,7 @@ import type {
   MutationResult,
   PendingChangesets,
   QuestionFeed,
+  ScenarioFeed,
   SpecStore,
   StoredAt,
 } from '@abseed/spectra-core'
@@ -72,6 +75,10 @@ interface ExpectationEntry {
   file: string
   expectation: Expectation
 }
+interface ScenarioEntry {
+  file: string
+  scenario: Scenario
+}
 
 export class FileSystemSpecStore implements SpecStore {
   private readonly termsDir: string
@@ -81,6 +88,7 @@ export class FileSystemSpecStore implements SpecStore {
   private readonly questionsDir: string
   private readonly expectationsDir: string
   private readonly retiredDir: string
+  private readonly scenariosDir: string
   private readonly projectFile: string
 
   /**
@@ -98,7 +106,8 @@ export class FileSystemSpecStore implements SpecStore {
     this.questionsDir = path.join(specsDir, 'questions')
     this.expectationsDir = path.join(specsDir, 'expectations')
     this.retiredDir = path.join(this.expectationsDir, 'retired')
-    // Beside the four collection dirs, never inside one, so the collection readers never see it.
+    this.scenariosDir = path.join(specsDir, 'scenarios')
+    // Beside the collection dirs, never inside one, so the collection readers never see it.
     this.projectFile = path.join(specsDir, 'project.json')
   }
 
@@ -151,6 +160,10 @@ export class FileSystemSpecStore implements SpecStore {
 
   private expectationFileName(expectation: Expectation): string {
     return `${expectation.id}-${slug(expectation.expect)}.json`
+  }
+
+  private scenarioFileName(scenario: Scenario): string {
+    return `${scenario.id}-${slug(scenario.title)}.json`
   }
 
   /**
@@ -428,6 +441,56 @@ export class FileSystemSpecStore implements SpecStore {
     return (await this.findExpectationEntry(id))?.expectation ?? null
   }
 
+  // ── Scenario reads ─────────────────────────────────────────────────────────────────────
+
+  private async readScenarioEntries(): Promise<{ entries: ScenarioEntry[]; problems: SourceProblem[] }> {
+    const entries: ScenarioEntry[] = []
+    const problems: SourceProblem[] = []
+    const seen = new Map<string, string>()
+
+    for (const file of await this.listJsonFiles(this.scenariosDir)) {
+      let data: unknown
+      try {
+        data = JSON.parse(await readFile(path.join(this.scenariosDir, file), 'utf8'))
+      } catch (error) {
+        problems.push({ file, message: `invalid JSON — ${(error as Error).message}` })
+        continue
+      }
+
+      const parsed = parseScenario(data)
+      if (!parsed.ok) {
+        problems.push({ file, message: parsed.errors.join('; ') })
+        continue
+      }
+
+      const previous = seen.get(parsed.value.id)
+      if (previous) {
+        problems.push({ file, message: `duplicate scenario id "${parsed.value.id}" — already declared in ${previous}` })
+        continue
+      }
+
+      seen.set(parsed.value.id, file)
+      entries.push({ file, scenario: parsed.value })
+    }
+
+    entries.sort((a, b) => a.scenario.id.localeCompare(b.scenario.id))
+    return { entries, problems }
+  }
+
+  async readScenarios(): Promise<ScenarioFeed> {
+    const { entries, problems } = await this.readScenarioEntries()
+    return { scenarios: entries.map((entry) => entry.scenario), problems }
+  }
+
+  private async findScenarioEntry(id: string): Promise<ScenarioEntry | null> {
+    const { entries } = await this.readScenarioEntries()
+    return entries.find((entry) => entry.scenario.id === id) ?? null
+  }
+
+  async findScenario(id: string): Promise<Scenario | null> {
+    return (await this.findScenarioEntry(id))?.scenario ?? null
+  }
+
   // ── Id allocation ──────────────────────────────────────────────────────────────────────
 
   private async jsonFileNames(dir: string): Promise<string[]> {
@@ -478,6 +541,16 @@ export class FileSystemSpecStore implements SpecStore {
     return `e-${String(highest + 1).padStart(3, '0')}`
   }
 
+  /** `s-004` after `s-003`. Scenarios are add-only in v1, so a live scan suffices. */
+  async nextScenarioId(): Promise<string> {
+    const { entries } = await this.readScenarioEntries()
+    const highest = entries.reduce((max, entry) => {
+      const match = /^s-(\d+)$/.exec(entry.scenario.id)
+      return match ? Math.max(max, Number(match[1])) : max
+    }, 0)
+    return `s-${String(highest + 1).padStart(3, '0')}`
+  }
+
   // ── Simple creates ───────────────────────────────────────────────────────────────────
 
   async addChangeset(changeset: Changeset): Promise<StoredAt> {
@@ -498,6 +571,13 @@ export class FileSystemSpecStore implements SpecStore {
     await mkdir(this.expectationsDir, { recursive: true })
     const target = await uniquePath(this.expectationsDir, this.expectationFileName(expectation))
     await this.writeJson(target, expectation)
+    return path.basename(target)
+  }
+
+  async addScenario(scenario: Scenario): Promise<StoredAt> {
+    await mkdir(this.scenariosDir, { recursive: true })
+    const target = await uniquePath(this.scenariosDir, this.scenarioFileName(scenario))
+    await this.writeJson(target, scenario)
     return path.basename(target)
   }
 

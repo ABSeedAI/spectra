@@ -1,0 +1,14 @@
+{
+  "id": "s-001",
+  "title": "Deleting a project that still holds open tasks is refused",
+  "terms": ["Project", "Task", "deleteProject"],
+  "given": "a Project with two Tasks, one of them still open",
+  "steps": [
+    "call deleteProject on the Project"
+  ],
+  "expect": [
+    "deleteProject is refused",
+    "the Project and both its Tasks still exist"
+  ],
+  "raisedBy": { "pass": "seed" }
+}
