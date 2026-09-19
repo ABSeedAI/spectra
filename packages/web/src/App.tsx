@@ -9,7 +9,7 @@
  * pure functions of the loaded glossary and the selection — they need no backend at all.
  */
 import { useCallback, useMemo, useState } from 'react'
-import type { Changeset, Expectation, HighlightKind, Term, TermType } from '@abseed/spectra-core'
+import type { Changeset, Expectation, HighlightKind, Scenario, Term, TermType } from '@abseed/spectra-core'
 import { computeBacklinks, computeCoverage, connectionsFor } from '@abseed/spectra-core'
 import { apiTransport } from './api.js'
 import { Diagram } from './Diagram.js'
@@ -22,6 +22,7 @@ import {
   HighlightLegend,
   ProjectSwitcher,
   QuestionPanel,
+  ScenarioPanel,
   reviewChangeset,
   SearchBar,
   TermDetail,
@@ -34,6 +35,7 @@ const EMPTY_CONNECTIONS: Map<string, HighlightKind> = new Map()
 const EMPTY_TERMS: Term[] = []
 const EMPTY_CHANGESETS: Changeset[] = []
 const EMPTY_EXPECTATIONS: Expectation[] = []
+const EMPTY_SCENARIOS: Scenario[] = []
 
 export function App() {
   const {
@@ -46,6 +48,7 @@ export function App() {
     feed,
     questionFeed,
     expectationFeed,
+    scenarioFeed,
     error,
     busy,
     notice,
@@ -252,6 +255,12 @@ export function App() {
         onRaise={raise}
         onCheck={apiTransport.checkExpectation}
         busy={busy}
+      />
+
+      <ScenarioPanel
+        scenarios={scenarioFeed?.scenarios ?? EMPTY_SCENARIOS}
+        known={known}
+        onSelectTerm={setSelected}
       />
 
       <ChangesetBar

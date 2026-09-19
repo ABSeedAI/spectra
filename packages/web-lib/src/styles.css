@@ -787,8 +787,48 @@ button {
 
 .questions,
 .proposals,
-.coverage {
+.coverage,
+.scenarios {
   margin-bottom: 18px;
+}
+
+.scenario-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  background: var(--panel);
+}
+.scenario-card h3 {
+  font-size: 13.5px;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.scenario-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 8px;
+}
+.scenario-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin: 6px 0 2px;
+}
+.scenario-given {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 2px 0 6px;
+}
+.scenario-card ol,
+.scenario-card ul {
+  margin: 2px 0 6px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
 }
 
 /* Sentence case, not uppercase — these read as labels for the cards beneath them, and

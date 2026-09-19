@@ -19,6 +19,7 @@ import type {
   Expectation,
   ProjectInfo,
   Question,
+  Scenario,
   SourceProblem,
   Term,
 } from '@abseed/spectra-core'
@@ -69,6 +70,11 @@ export interface ExpectationFeed {
   expectations: Expectation[]
   /** Superseded, kept so a citation of an old id still resolves. */
   retired: Expectation[]
+  problems: SourceProblem[]
+}
+
+export interface ScenarioFeed {
+  scenarios: Scenario[]
   problems: SourceProblem[]
 }
 
@@ -144,6 +150,7 @@ export interface GlossaryTransport {
   fetchChangesets(): Promise<ChangesetFeed>
   fetchQuestions(): Promise<QuestionFeed>
   fetchExpectations(): Promise<ExpectationFeed>
+  fetchScenarios(): Promise<ScenarioFeed>
 
   /**
    * `expectedVersion` (optional) is the {@link Glossary.version} the change was reviewed against; when

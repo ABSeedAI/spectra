@@ -23,6 +23,7 @@ import type {
   Org,
   ProjectSummary,
   QuestionFeed,
+  ScenarioFeed,
 } from './glossaryTransport.js'
 
 export interface Notice {
@@ -69,21 +70,24 @@ export function useGlossary(transport: GlossaryTransport) {
   const [feed, setFeed] = useState<ChangesetFeed | null>(null)
   const [questionFeed, setQuestionFeed] = useState<QuestionFeed | null>(null)
   const [expectationFeed, setExpectationFeed] = useState<ExpectationFeed | null>(null)
+  const [scenarioFeed, setScenarioFeed] = useState<ScenarioFeed | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
 
   const load = useCallback(async () => {
-    const [nextGlossary, nextFeed, nextQuestions, nextExpectations] = await Promise.all([
+    const [nextGlossary, nextFeed, nextQuestions, nextExpectations, nextScenarios] = await Promise.all([
       transport.fetchGlossary(),
       transport.fetchChangesets(),
       transport.fetchQuestions(),
       transport.fetchExpectations(),
+      transport.fetchScenarios(),
     ])
     setGlossary(nextGlossary)
     setFeed(nextFeed)
     setQuestionFeed(nextQuestions)
     setExpectationFeed(nextExpectations)
+    setScenarioFeed(nextScenarios)
   }, [transport])
 
   // Point the API at a project, remember the choice, show its identity, and load its glossary. Every
@@ -289,6 +293,7 @@ export function useGlossary(transport: GlossaryTransport) {
     feed,
     questionFeed,
     expectationFeed,
+    scenarioFeed,
     // status
     error,
     setError,
