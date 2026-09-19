@@ -16,6 +16,8 @@ import { computeCoverage } from '@abseed/spectra-core'
 import { checkExpectation } from './expectationCheck.js'
 import { publishExpectation, raiseExpectation, recheckExpectation, supersedeExpectation } from '@abseed/spectra-core'
 import type { RaiseExpectationRequest, SupersedeRequest } from '@abseed/spectra-core'
+import { raiseScenario } from '@abseed/spectra-core'
+import type { RaiseScenarioRequest } from '@abseed/spectra-core'
 import { SPECS_DIR } from './config.js'
 import { resolveBackend } from './backend.js'
 import type { SpecStoreBackend } from './backend.js'
@@ -326,6 +328,55 @@ glossary.post('/speech', async (req, res, next) => {
 glossary.get('/expectations', async (_req, res, next) => {
   try {
     res.json(await storeOf(res).readExpectations())
+  } catch (error) {
+    next(error)
+  }
+})
+
+glossary.get('/scenarios', async (_req, res, next) => {
+  try {
+    res.json(await storeOf(res).readScenarios())
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * Raise a scenario — a stored, cross-entity spec-level test case. Add-only and unapproved, the way
+ * raising a question or an expectation is: it asserts an outcome across several terms but changes
+ * nothing, so the most it can do is fail and reveal a gap.
+ */
+glossary.post('/scenarios', async (req, res, next) => {
+  try {
+    const body = req.body as Partial<RaiseScenarioRequest>
+    if (typeof body?.title !== 'string' || body.title.trim() === '') {
+      res.status(400).json({ error: 'Expected { title: string }.' })
+      return
+    }
+    const expect = Array.isArray(body.expect)
+      ? body.expect.filter((entry): entry is string => typeof entry === 'string' && entry.trim() !== '')
+      : []
+    if (expect.length === 0) {
+      res.status(400).json({ error: 'Expected { expect: string[] } with at least one assertion.' })
+      return
+    }
+
+    const outcome = await raiseScenario(
+      storeOf(res),
+      {
+        title: body.title,
+        terms: Array.isArray(body.terms) ? body.terms.filter((term): term is string => typeof term === 'string') : [],
+        given: typeof body.given === 'string' ? body.given : '',
+        steps: Array.isArray(body.steps) ? body.steps.filter((step): step is string => typeof step === 'string') : [],
+        expect,
+        pass: typeof body.pass === 'string' && body.pass ? body.pass : 'usage',
+        ...(typeof body.from === 'string' ? { from: body.from } : {}),
+        ...(typeof body.file === 'string' ? { file: body.file } : {}),
+      },
+      principalOf(res).author,
+    )
+
+    res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
     next(error)
   }

@@ -10,7 +10,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import type { Answer, Changeset, Expectation, Question, Term } from '@abseed/spectra-core'
+import type { Answer, Changeset, Expectation, Question, Scenario, Term } from '@abseed/spectra-core'
 import { glossaryVersion } from '@abseed/spectra-core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SqlSpecStore } from './sqlSpecStore.js'
@@ -49,6 +49,32 @@ const expectation = (id: string, over: Partial<Expectation> = {}): Expectation =
 })
 const term = (name: string): Term => ({ name, type: 'entity', spec: `A ${name}.`, parent: null, tags: [], attributes: [] })
 const answer: Answer = { chose: null, note: 'settled in prose', answeredAt: '2026-01-01T00:00:00.000Z' }
+const scenario = (id: string, over: Partial<Scenario> = {}): Scenario => ({
+  id,
+  title: 'a situation',
+  terms: ['Task'],
+  given: '',
+  steps: [],
+  expect: ['something holds'],
+  raisedBy: { pass: 'usage' },
+  ...over,
+})
+
+describe('SqlSpecStore scenarios (v1)', () => {
+  it('adds, reads back in id order, finds by id, and allocates the next id', async () => {
+    expect((await store.readScenarios()).scenarios).toEqual([])
+    expect(await store.nextScenarioId()).toBe('s-001')
+
+    await store.addScenario(scenario('s-001'))
+    await store.addScenario(scenario('s-002', { title: 'another' }))
+
+    const { scenarios } = await store.readScenarios()
+    expect(scenarios.map((s) => s.id)).toEqual(['s-001', 's-002'])
+    expect((await store.findScenario('s-002'))?.title).toBe('another')
+    expect(await store.findScenario('s-404')).toBeNull()
+    expect(await store.nextScenarioId()).toBe('s-003')
+  })
+})
 
 describe('SqlSpecStore.projectInfo', () => {
   it('falls back to a neutral default when unset', async () => {
