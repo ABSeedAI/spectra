@@ -5,19 +5,20 @@
  * arguments.
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { Author, Changeset, Question, SpecStore, Term, TranscriptStore } from '@abseed/spectra-core'
+import type { Author, Changeset, Question, Scenario, SpecStore, Term, TranscriptStore } from '@abseed/spectra-core'
 import { pick, pureTools, qualified, withVersion } from './tools.js'
 
 const term = (name: string): Term => ({ name, type: 'entity', spec: `A ${name}`, parent: null, attributes: [], tags: [] })
 
 /** A minimal SpecStore: enough for the pure tools, capturing what gets written. */
-function fakeStore(captured: { changeset?: Changeset; question?: Question }) {
+function fakeStore(captured: { changeset?: Changeset; question?: Question; scenario?: Scenario }) {
   const empty = { problems: [] as never[] }
   return {
     readTerms: async () => ({ terms: [term('Task'), term('Project')], ...empty }),
     readQuestions: async () => ({ questions: [] as Question[], ...empty }),
     readChangesets: async () => ({ changesets: [] as Changeset[], applied: [] as never[], ...empty }),
     readExpectations: async () => ({ expectations: [] as never[], retired: [] as never[], ...empty }),
+    readScenarios: async () => ({ scenarios: [] as Scenario[], ...empty }),
     nextChangesetId: async () => 'cs-001',
     addChangeset: async (cs: Changeset) => {
       captured.changeset = cs
@@ -27,6 +28,11 @@ function fakeStore(captured: { changeset?: Changeset; question?: Question }) {
     addQuestion: async (q: Question) => {
       captured.question = q
       return 'q-001.json'
+    },
+    nextScenarioId: async () => 's-001',
+    addScenario: async (sc: Scenario) => {
+      captured.scenario = sc
+      return 's-001.json'
     },
   } as unknown as SpecStore
 }
@@ -77,6 +83,36 @@ describe('pure tool layer', () => {
     })
     expect(body.raised).toBe('q-001')
     expect(captured.question?.author).toEqual({ kind: 'coder', user: 'usr_42' })
+  })
+
+  it('raise_scenario writes a cross-entity scenario, attributed to the author', async () => {
+    const captured: { scenario?: Scenario } = {}
+    const tools = withVersion(pureTools(fakeStore(captured), fakeTranscripts, author), version)
+    const { body } = await call(tools, 'raise_scenario', {
+      title: 'Two shoppers race for the last unit',
+      terms: ['Task', 'Project'],
+      given: 'one unit left',
+      steps: ['both check out at the same instant'],
+      expect: ['exactly one succeeds'],
+      pass: 'usage',
+    })
+    expect(body.raised).toBe('s-001')
+    expect(body.file).toBe('specs/scenarios/s-001.json')
+    expect(captured.scenario?.author).toEqual({ kind: 'coder', user: 'usr_42' })
+    expect(captured.scenario?.terms).toEqual(['Task', 'Project'])
+  })
+
+  it('raise_scenario refuses one that names no term, writing nothing', async () => {
+    const captured: { scenario?: Scenario } = {}
+    const tools = withVersion(pureTools(fakeStore(captured), fakeTranscripts, author), version)
+    const { body } = await call(tools, 'raise_scenario', {
+      title: 'No terms',
+      terms: [],
+      expect: ['something'],
+      pass: 'usage',
+    })
+    expect(body.error).toMatch(/at least one glossary term/)
+    expect(captured.scenario).toBeUndefined()
   })
 
   it('pick filters to an agent’s names, and qualified prefixes them', () => {

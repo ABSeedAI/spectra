@@ -21,7 +21,7 @@
  * rather than depend on the SDK.
  */
 import { z } from 'zod'
-import { analyzePending, computeBacklinks, computeCoverage, proposeChangeset, raiseQuestion, summarizeOp } from '@abseed/spectra-core'
+import { analyzePending, computeBacklinks, computeCoverage, proposeChangeset, raiseQuestion, raiseScenario, summarizeOp } from '@abseed/spectra-core'
 import type { Author, Changeset, PendingItem, ProposeRequest, Question, RaiseRequest, SpecStore, Term, TranscriptStore } from '@abseed/spectra-core'
 
 /** MCP tools answer with content blocks; every tool here returns one JSON or text block. */
@@ -268,6 +268,18 @@ export function pureTools(store: SpecStore, transcripts: TranscriptStore, author
     { readOnlyHint: true },
   )
 
+  const readScenarios = defineTool(
+    'read_scenarios',
+    'Read the scenarios — stored, cross-entity spec-level test cases: a concrete situation that combines several terms and asserts an outcome, kept because the combination is worth remembering. Read these before raising one, and to see which cross-cutting cases have already been captured.',
+    { term: z.string().optional().describe('Only scenarios naming this term') },
+    async (args) => {
+      const { scenarios, problems } = await store.readScenarios()
+      const wanted = args.term ? scenarios.filter((scenario) => scenario.terms.includes(args.term!)) : scenarios
+      return say({ scenarios: wanted, problems })
+    },
+    { readOnlyHint: true },
+  )
+
   const analyzePendingTool = defineTool(
     'analyze_pending',
     'Work out what to tackle first. Replays every pending changeset and unanswered question option through the changeset engine, alone and in pairs, and reports which ones break which — including cases where order is what matters. Use this before recommending where to start; do not reason it out by hand.',
@@ -346,6 +358,43 @@ export function pureTools(store: SpecStore, transcripts: TranscriptStore, author
     },
   )
 
+  const raiseScenarioTool = defineTool(
+    'raise_scenario',
+    [
+      'Raise a scenario — a stored, cross-entity spec-level test case: a concrete situation that combines several terms and asserts an outcome, especially one that exposes a case the specs have not covered yet.',
+      'A scenario is the integration-test tier; an expectation is the unit-test tier. If what you want to state is a single rule about one entity — "always", "never", one situation\'s outcome — raise an expectation instead. If the specs do not settle something a human must decide, raise a question.',
+      'Name every term the situation touches — a scenario is cross-entity by definition. Steps are the walkthrough; state simultaneity in the prose (e.g. "both check out at the same instant"). `expect` is what must hold at the end — at least one assertion.',
+      'It changes nothing and needs no approval, the way raising a question does: the most it can do is fail and reveal a gap. Read read_scenarios first so you do not restate one already captured.',
+    ].join(' '),
+    {
+      title: z.string().describe('A short name for the situation'),
+      terms: z.array(z.string()).describe('Every glossary term the scenario touches; at least one'),
+      given: z.string().optional().describe('The setup, if there is one'),
+      steps: z.array(z.string()).optional().describe('Ordered steps of the walkthrough; state simultaneity in the prose'),
+      expect: z.array(z.string()).describe('What must hold at the end — at least one assertion'),
+      pass: z.string().describe('What was being done when it came up, e.g. "usage" or "implementation"'),
+      from: z.string().optional().describe('A question, changeset, or expectation id this follows from, if any'),
+      file: z.string().optional(),
+    },
+    async (args) => {
+      const outcome = await raiseScenario(
+        store,
+        {
+          title: args.title,
+          terms: args.terms,
+          given: args.given,
+          steps: args.steps,
+          expect: args.expect,
+          pass: args.pass,
+          ...(args.from ? { from: args.from } : {}),
+          ...(args.file ? { file: args.file } : {}),
+        },
+        author,
+      )
+      return say(outcome.ok ? { raised: outcome.id, file: `specs/scenarios/${outcome.file}` } : { error: outcome.error })
+    },
+  )
+
   const proposeChangesetTool = defineTool(
     'propose_changeset',
     [
@@ -385,9 +434,11 @@ export function pureTools(store: SpecStore, transcripts: TranscriptStore, author
     readQuestions,
     readChangesets,
     readExpectations,
+    readScenarios,
     analyzePendingTool,
     searchTranscripts,
     raiseQuestionTool,
+    raiseScenarioTool,
     proposeChangesetTool,
   ]
 }
