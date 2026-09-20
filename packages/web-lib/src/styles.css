@@ -804,6 +804,14 @@ button {
   margin: 0 0 6px;
   color: var(--text);
 }
+/* The stable handle (s-001) before the title — a shortcut id to refer to the scenario by, the
+   same muted treatment as .question-id / .expectation-id. */
+.scenario-id {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 6px;
+}
 .scenario-terms {
   display: flex;
   flex-wrap: wrap;
