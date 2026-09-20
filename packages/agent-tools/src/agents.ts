@@ -1,10 +1,16 @@
 /**
  * Who is in the channel — the two agents, as data.
  *
- * Two agents with deliberately different reach. `@spec` has domain tools and no filesystem at all, so
- * it cannot bypass the changesets-only rule. `@coder` has real file access, but rooted at its project
- * and with the glossary path explicitly denied — it implements what the glossary says and cannot
+ * Two agents with deliberately different reach. `@spec` has domain tools and, by default, no filesystem
+ * at all, so it cannot bypass the changesets-only rule. `@coder` has real file access, but rooted at its
+ * project and with the glossary path explicitly denied — it implements what the glossary says and cannot
  * quietly rewrite the glossary to match what it built.
+ *
+ * One opt-in exception (GH #136): when a `specCodeDir` is supplied, @spec gains **read-only** code
+ * access there — `Read`/`Glob`/`Grep` only, never `Bash`/`Edit`/`Write` — so it can surface the domain
+ * an existing codebase already implements (brownfield) and check the glossary against the code. It still
+ * cannot change code: reading is the whole grant, and a deployment backs it with a read-only mount. Off
+ * unless the path is set, so normal domain work stays code-blind.
  *
  * WHY this lives in `@abseed/spectra-agent-tools` and not the server: the definitions are the single source
  * of who `@spec` and `@coder` are, and a runtime fetches them from the coordinator rather than
@@ -39,10 +45,17 @@ export interface AgentDefinition {
 
 /** The filesystem paths the definitions reference — supplied by the host, never assumed. */
 export interface AgentPaths {
-  /** The glossary directory: @spec's cwd, and the path @coder is forbidden to write. */
+  /** The glossary directory: @spec's cwd (when it isn't reading code), and the path @coder can't write. */
   specsDir: string
   /** @coder's working directory — the project it implements into. */
   appDir: string
+  /**
+   * Opt-in (GH #136): when set, @spec reads the project's code from here, **read-only** — it becomes
+   * @spec's cwd and it gains `Read`/`Glob`/`Grep` (never write/shell). Unset ⇒ @spec has no filesystem,
+   * exactly as before. The deployment supplies this as a read-only mount; the read-only-ness of the
+   * tools here and the mount there are belt-and-suspenders.
+   */
+  specCodeDir?: string
 }
 
 // The project's name and domain are threaded in, not hardcoded — they come from the SpecStore, so the
@@ -66,7 +79,23 @@ That sentence is not a summary of your whole reply and should not try to be. If 
  */
 export function buildAgents(project: ProjectInfo, paths: AgentPaths): Record<AgentName, AgentDefinition> {
   const SHARED = sharedPrompt(project)
-  const { specsDir: SPECS_DIR, appDir: APP_DIR } = paths
+  const { specsDir: SPECS_DIR, appDir: APP_DIR, specCodeDir: SPEC_CODE_DIR } = paths
+  // GH #136: when a code dir is supplied, @spec reads it read-only — Read/Glob/Grep only, and those
+  // auto-approve because they are read-only by construction (unlike Bash, which the SDK only *judges*
+  // read-only). Its cwd becomes that dir so exploration is rooted at the repo. Unset ⇒ no filesystem.
+  const specReadsCode = Boolean(SPEC_CODE_DIR)
+  const specReadTools = specReadsCode ? ['Read', 'Glob', 'Grep'] : []
+  // Prompt discipline for a code-reading @spec: intent vs implementation, and slice-by-slice adoption —
+  // so it surfaces the domain an existing codebase implies without canonizing incidental code as terms.
+  const specCodeGuidance = specReadsCode
+    ? `
+
+You can read the project's code (read-only) at ${SPEC_CODE_DIR} — Read, Glob and Grep only; you cannot change it. Use it to see what the app actually does: to surface the domain an existing codebase already implements, and to check the glossary against the implementation.
+
+Two rules keep that honest:
+- The glossary states domain *intent*, not implementation. The code tells you what *is*; the glossary says what is *required*. Where a behaviour looks incidental — how it happened to be built rather than something the domain demands — do not canonize it as a term; raise a question about whether it is intended.
+- Adopt an existing codebase slice by slice. Propose terms for one bounded area and raise questions for the rest; do not try to import the whole app in one changeset.`
+    : ''
   // The object below keeps its original indentation — its systemPrompt template literals are
   // multi-line, so re-indenting would corrupt the prompt text.
   return {
@@ -74,11 +103,11 @@ export function buildAgents(project: ProjectInfo, paths: AgentPaths): Record<Age
     name: 'spec',
     label: 'spec',
     description: 'Reads and edits the glossary. Proposes changesets, raises questions.',
-    cwd: SPECS_DIR,
-    // No filesystem at all: everything it can reach goes through the domain tools, which
-    // is what keeps the human write path changesets-only.
-    builtins: [],
-    autoApprove: [],
+    cwd: specReadsCode ? SPEC_CODE_DIR! : SPECS_DIR,
+    // Default: no filesystem at all, so everything it reaches goes through the domain tools — what keeps
+    // the human write path changesets-only. With a specCodeDir (GH #136): read-only code tools, no more.
+    builtins: specReadTools,
+    autoApprove: specReadTools,
     domainTools: [
       'read_glossary',
       'read_questions',
@@ -112,7 +141,7 @@ An expectation marked contested disagrees with a term's spec and was recorded an
 
 When asked what is untested, under-specified, or what to think about next, call read_expectations with coverage. It reports which entity/action pairs nothing has been said about. Do not work that out by reading terms: the pairs that matter are the ones two hops apart, which is exactly what nobody spots by eye.
 
-When asked what to work on first, call analyze_pending and answer from what it returns. Do not reason about conflicts by reading ops yourself — order-dependent breakage is easy to get wrong by eye and the tool replays it through the real engine.`,
+When asked what to work on first, call analyze_pending and answer from what it returns. Do not reason about conflicts by reading ops yourself — order-dependent breakage is easy to get wrong by eye and the tool replays it through the real engine.${specCodeGuidance}`,
   },
 
   coder: {

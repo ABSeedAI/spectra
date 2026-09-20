@@ -63,6 +63,12 @@ has no consumer project, so it mounts a placeholder `./app` at `/work/project` a
 empty `./app` on the host). The in-process (unsandboxed) coder's cwd is `APP_DIR` in
 `packages/server/src/agent/agents.ts` (`CODER_DIR` env, default `<repo>/app`).
 
+`@spec` is code-blind by default (`builtins: []`). Opt-in (GH #136): set `SPEC_CODE_DIR` and `@spec`
+gains **read-only** code access there (`Read`/`Glob`/`Grep` only, that dir as its cwd) — for surfacing
+specs from an existing repo (brownfield) and checking the glossary against the code. Unset ⇒ unchanged.
+A sandboxed/attached deployment supplies this as a read-only mount (that plumbing is a later slice);
+in-process, it points at a checkout on disk.
+
 The *drift check* that used to be copied into `app/` (`specs.snapshot.json` + `implements.test.ts`)
 now ships as the **`@abseed/spectra-drift-check`** package (`packages/drift-check`): a consumer project adds
 it as a dev-dependency and writes a one-line test — `driftCheck({ srcDir, snapshotPath })` — against
