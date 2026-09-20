@@ -114,8 +114,9 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   // A tool call that writes lands on disk; the glossary behind this panel is now stale.
   const settled = useCallback(
     (event: ChatEvent) => {
-      // Anything that writes to specs/ leaves the glossary behind this panel stale.
-      const writes = ['raise_question', 'propose_changeset', 'mark_implemented']
+      // Anything that writes to specs/ leaves the glossary behind this panel stale — including the
+      // free adds (raise_question/expectation/scenario), whose feeds the panel shows but does not poll.
+      const writes = ['raise_question', 'raise_expectation', 'raise_scenario', 'propose_changeset', 'mark_implemented']
       if (event.kind === 'tool_call' && event.status === 'completed' && writes.includes(event.text ?? '')) {
         onSpecsChanged()
       }
