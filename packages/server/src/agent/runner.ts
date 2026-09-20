@@ -19,6 +19,7 @@ import type { AgentProvider } from './agentProvider.js'
 import { CODER_URL, SPEC_URL, probe } from '../sandbox.js'
 import type { AgentName } from './agents.js'
 import { qualified, toolsFor } from './tools.js'
+import { isRaiseTool, specProactiveEnabled, triageNotice, triagePrompt } from './escalation.js'
 
 /** How long a pending approval waits before giving up, so a run cannot hang forever. */
 const APPROVAL_TIMEOUT_MS = 15 * 60 * 1000
@@ -185,9 +186,41 @@ export class AgentRunner {
     void start.finally(() => {
       this.active.delete(key)
       this.events(sessionId).emit('event', { kind: 'done' } satisfies RunnerEvent)
+      // GH #137: a @coder run that raised questions/expectations/scenarios wakes @spec to triage them.
+      // After the run ends (active cleared) so @spec's turn isn't blocked by @coder still holding a slot.
+      if (to === 'coder') void this.maybeEscalateToSpec(sessionId)
     })
 
     return { ok: true }
+  }
+
+  /**
+   * The raise tools @coder emitted in its current run, per session — collected during the run and
+   * drained when it ends to wake @spec once (GH #137). Counting on *emit* (not result) matches "any
+   * raise @coder makes": the free-adds rarely fail, and waking @spec to look at nothing is harmless.
+   */
+  private readonly raisedByCoder = new Map<string, string[]>()
+
+  private noteCoderRaise(sessionId: string, shortName: string): void {
+    if (!isRaiseTool(shortName)) return
+    const list = this.raisedByCoder.get(sessionId) ?? []
+    list.push(shortName)
+    this.raisedByCoder.set(sessionId, list)
+  }
+
+  /**
+   * Wake @spec to triage what @coder just raised. Opt-in (SPEC_PROACTIVE), skipped when nothing was
+   * raised or @spec is already working this session. @spec triages within its normal repertoire —
+   * propose a changeset, or sharpen a question — never deciding a product fork. No human message: the
+   * transcript's "why" is the notice, attributed to @spec.
+   */
+  private async maybeEscalateToSpec(sessionId: string): Promise<void> {
+    const raised = this.raisedByCoder.get(sessionId)
+    this.raisedByCoder.delete(sessionId)
+    if (!specProactiveEnabled() || !raised || raised.length === 0) return
+    if (this.active.has(`${sessionId}:spec`)) return // @spec busy — skip this batch (a later raise re-wakes it)
+    await this.notify(sessionId, 'spec', triageNotice(raised))
+    await this.launch(sessionId, triagePrompt(raised), 'spec')
   }
 
   /** The runtime URL for an agent, or null to run it in-process. The one place the mapping lives. */
@@ -268,6 +301,7 @@ export class AgentRunner {
             }
             if (block.type === 'tool_use') {
               openCalls.set(block.id, block.name)
+              if (to === 'coder') this.noteCoderRaise(sessionId, shortName(block.name))
               await this.record(sessionId, {
                 author: to,
                 kind: 'tool_call',
@@ -388,6 +422,7 @@ export class AgentRunner {
         } else if (event.kind === 'tool_call') {
           const id = String(event.id)
           openCalls.add(id)
+          if (to === 'coder') this.noteCoderRaise(sessionId, shortName(String(event.tool)))
           await this.record(sessionId, {
             author: to,
             kind: 'tool_call',
