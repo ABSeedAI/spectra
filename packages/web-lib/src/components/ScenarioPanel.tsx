@@ -22,7 +22,10 @@ export function ScenarioPanel({ scenarios, known, onSelectTerm }: ScenarioPanelP
       <h2>Scenarios</h2>
       {scenarios.map((scenario) => (
         <article key={scenario.id} className="scenario-card">
-          <h3>{scenario.title}</h3>
+          <h3>
+            <span className="scenario-id">{scenario.id}</span>
+            {scenario.title}
+          </h3>
           <div className="scenario-terms">
             {scenario.terms.map((term) => (
               <TermRef key={term} name={term} known={known} onSelect={onSelectTerm} />
