@@ -129,6 +129,33 @@ export class AgentRunner {
     // is worse than a message that visibly waits for you to say who it is for.
     if (!to) return { ok: true }
 
+    return this.launch(sessionId, prompt, to)
+  }
+
+  /**
+   * Records a line as if spoken by an agent — not the human — and streams it. Lets @coder announce
+   * something it is doing (the auto-implementation countdown and lead-in) around a turn the human
+   * did not type, without faking a human message to carry the explanation.
+   */
+  async notify(sessionId: string, author: AgentName, text: string): Promise<void> {
+    await this.record(sessionId, { author, kind: 'assistant', text })
+  }
+
+  /**
+   * Starts @coder on its own, triggered by a spec change rather than a typed message. Nobody typed
+   * this turn, so — unlike {@link send} — there is no human message to record: it launches straight
+   * into the run. The transcript's "why" comes from the {@link notify} lines posted around it.
+   */
+  async autoImplement(sessionId: string, prompt: string): Promise<{ ok: boolean; error?: string }> {
+    return this.launch(sessionId, prompt, 'coder')
+  }
+
+  /**
+   * Launches a turn: the guard against a double-run, the credential checks, and the relay-or-in-process
+   * dispatch. Shared by {@link send} (after it records the human turn) and {@link autoImplement} (which
+   * has no human turn to record).
+   */
+  private async launch(sessionId: string, prompt: string, to: AgentName): Promise<{ ok: boolean; error?: string }> {
     const key = `${sessionId}:${to}`
     if (this.active.has(key)) {
       return { ok: false, error: `@${to} is still working on the previous message.` }

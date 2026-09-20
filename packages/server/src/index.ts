@@ -8,6 +8,13 @@ import { chatRoutes } from './agent/routes.js'
 import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
 import { AgentProvider } from './agent/agentProvider.js'
+import {
+  DEFAULT_SCHEDULER_CONFIG,
+  TimerScheduler,
+  countdownNotice,
+  firingNotice,
+  implementInstruction,
+} from './agent/implementationScheduler.js'
 import { buildAgents } from './agent/agents.js'
 import { DATA_DIR, TRANSCRIPTS_DB, resolveTranscriptStore } from './transcripts.js'
 import { CODER_URL, SPEC_URL, probeSandbox } from './sandbox.js'
@@ -66,6 +73,41 @@ if (!CODER_URL) mkdirSync(agents.coder.cwd, { recursive: true })
 // built per project and cached. So the runner takes the resolvers, not a single boot-time pair.
 const agentProvider = new AgentProvider(provider)
 const runner = new AgentRunner(provider, agentProvider, transcripts)
+
+// Proactive @coder (GH #133): applying a changeset should update the code without the human
+// hand-pinging @coder each time. The scheduler debounces applies into one turn; it fires only into
+// a project's most-recently-active *unattended* conversation, because an auto-started turn that
+// then stalls on an approval card nobody is there to click would be worse than not starting. No
+// eligible session means nothing runs — the existence of an unattended conversation is the opt-in.
+const SCHEDULER_CONFIG = {
+  windowMs: Number(process.env.IMPLEMENT_WINDOW_MS) || DEFAULT_SCHEDULER_CONFIG.windowMs,
+  maxWaitMs: Number(process.env.IMPLEMENT_MAX_WAIT_MS) || DEFAULT_SCHEDULER_CONFIG.maxWaitMs,
+}
+const targetSessionFor = async (projectId: string): Promise<string | null> => {
+  // listSessions is newest-first, so the first unattended one is the most recent — where the human
+  // most likely is, and the only place a hands-off turn is defensible.
+  for (const session of await transcripts.listSessions(projectId)) {
+    if (runner.isUnattended(session.id)) return session.id
+  }
+  return null
+}
+const scheduler = new TimerScheduler(
+  {
+    onOpen: async (projectId) => {
+      const target = await targetSessionFor(projectId)
+      if (target) await runner.notify(target, 'coder', countdownNotice(SCHEDULER_CONFIG.windowMs))
+    },
+    onFire: async (projectId, changes) => {
+      const target = await targetSessionFor(projectId)
+      if (!target) return 'dropped' // unattended was turned off during the window — nothing to run
+      if (runner.isRunning(target)) return 'retry' // @coder is mid-turn; wait a window and try again
+      await runner.notify(target, 'coder', firingNotice(changes))
+      const outcome = await runner.autoImplement(target, implementInstruction(changes))
+      return outcome.ok ? 'sent' : 'retry'
+    },
+  },
+  SCHEDULER_CONFIG,
+)
 
 // Who a request is, and what it may touch, is the server's call — never the request body, the
 // same reason an agent's identity comes from its route. The authorizer resolves a principal per
@@ -206,6 +248,16 @@ glossary.post('/changesets/:id/apply', async (req, res, next) => {
       // Optimistic concurrency (GH #93): the version the UI reviewed against, if it sent one.
       expectedVersion: typeof body.expectedVersion === 'string' ? body.expectedVersion : undefined,
     })
+    // A successful apply that actually changed terms is a spec change @coder may need to implement:
+    // hand it to the debounce (GH #133), which batches a burst of applies into one turn. A no-op
+    // apply, or a refusal, is not a change and does not arm anything.
+    if (outcome.ok && (outcome.written.length > 0 || outcome.deleted.length > 0)) {
+      scheduler.noteApplied(res.locals.projectId as string, {
+        changesetId: req.params.id,
+        written: outcome.written,
+        deleted: outcome.deleted,
+      })
+    }
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {
     next(error)
