@@ -42,3 +42,38 @@ describe('buildAgents — @spec code access (GH #136)', () => {
     expect(coder.domainTools).not.toContain('propose_changeset')
   })
 })
+
+describe('buildAgents — @spec reference tools (GH #145)', () => {
+  it('grants no web tools by default', () => {
+    const { spec } = buildAgents(project, paths)
+    expect(spec.builtins).not.toContain('WebFetch')
+    expect(spec.builtins).not.toContain('WebSearch')
+  })
+
+  it('grants WebFetch (auto-approved) with reference-not-authority guidance when specWebFetch is on', () => {
+    const { spec } = buildAgents(project, { ...paths, specWebFetch: true })
+    expect(spec.builtins).toContain('WebFetch')
+    expect(spec.autoApprove).toContain('WebFetch')
+    expect(spec.builtins).not.toContain('WebSearch') // independent grant
+    expect(spec.systemPrompt).toContain('fetch a URL')
+    expect(spec.systemPrompt).toContain('reference, not authority')
+  })
+
+  it('grants WebSearch independently', () => {
+    const { spec } = buildAgents(project, { ...paths, specWebSearch: true })
+    expect(spec.builtins).toContain('WebSearch')
+    expect(spec.builtins).not.toContain('WebFetch')
+    expect(spec.systemPrompt).toContain('search the web')
+  })
+
+  it('combines with code access (read tools + web tools, still no write/shell)', () => {
+    const { spec } = buildAgents(project, { ...paths, specCodeDir: '/work/repo', specWebFetch: true, specWebSearch: true })
+    expect(spec.builtins).toEqual(['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch'])
+    for (const forbidden of ['Bash', 'Edit', 'Write']) expect(spec.builtins).not.toContain(forbidden)
+  })
+
+  it('always tells the user missing tools can be enabled in Agents settings (even with none granted)', () => {
+    const { spec } = buildAgents(project, paths)
+    expect(spec.systemPrompt).toContain('enable it for this project in the Agents settings')
+  })
+})

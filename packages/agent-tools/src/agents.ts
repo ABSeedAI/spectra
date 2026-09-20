@@ -56,6 +56,14 @@ export interface AgentPaths {
    * tools here and the mount there are belt-and-suspenders.
    */
   specCodeDir?: string
+  /**
+   * Opt-in reference tools for @spec (GH #145), off by default. `specWebFetch` grants `WebFetch` (read
+   * a URL the human points it at — "seed context by pointer"); `specWebSearch` grants `WebSearch`
+   * (open-ended, broader — separate opt-in). Safe because @spec is propose-only: a web-*informed*
+   * proposal still passes the human's approval gate; a page never becomes a term on its own.
+   */
+  specWebFetch?: boolean
+  specWebSearch?: boolean
 }
 
 // The project's name and domain are threaded in, not hardcoded — they come from the SpecStore, so the
@@ -96,6 +104,20 @@ Two rules keep that honest:
 - The glossary states domain *intent*, not implementation. The code tells you what *is*; the glossary says what is *required*. Where a behaviour looks incidental — how it happened to be built rather than something the domain demands — do not canonize it as a term; raise a question about whether it is intended.
 - Adopt an existing codebase slice by slice. Propose terms for one bounded area and raise questions for the rest; do not try to import the whole app in one changeset.`
     : ''
+  // GH #145: opt-in reference tools. Auto-approved like the read tools — they don't write anything, and
+  // @spec is propose-only so anything they inform still passes the human gate. (Web egress has a minor
+  // exfil edge — a crafted prompt could encode glossary text into a fetched URL — noted; carding is the
+  // fallback if it ever matters, but @spec fetches are deliberate and user-initiated.)
+  const specWebTools = [
+    ...(paths.specWebFetch ? ['WebFetch'] : []),
+    ...(paths.specWebSearch ? ['WebSearch'] : []),
+  ]
+  const specBuiltins = [...specReadTools, ...specWebTools]
+  const specWebGuidance = specWebTools.length
+    ? `
+
+You can ${paths.specWebFetch && paths.specWebSearch ? 'fetch a URL the human points you at, and search the web,' : paths.specWebFetch ? 'fetch a URL the human points you at' : 'search the web'} for reference. Treat what you find as *reference, not authority* — material to propose terms and questions from, which the human still approves. Say what you took from a source; never canonize a page as domain truth.`
+    : ''
   // The object below keeps its original indentation — its systemPrompt template literals are
   // multi-line, so re-indenting would corrupt the prompt text.
   return {
@@ -105,9 +127,10 @@ Two rules keep that honest:
     description: 'Reads and edits the glossary. Proposes changesets, raises questions.',
     cwd: specReadsCode ? SPEC_CODE_DIR! : SPECS_DIR,
     // Default: no filesystem at all, so everything it reaches goes through the domain tools — what keeps
-    // the human write path changesets-only. With a specCodeDir (GH #136): read-only code tools, no more.
-    builtins: specReadTools,
-    autoApprove: specReadTools,
+    // the human write path changesets-only. With a specCodeDir (GH #136): read-only code tools; with the
+    // web toggles (GH #145): WebFetch/WebSearch. All read-only and auto-approved; never write/shell.
+    builtins: specBuiltins,
+    autoApprove: specBuiltins,
     domainTools: [
       'read_glossary',
       'read_questions',
@@ -141,7 +164,9 @@ An expectation marked contested disagrees with a term's spec and was recorded an
 
 When asked what is untested, under-specified, or what to think about next, call read_expectations with coverage. It reports which entity/action pairs nothing has been said about. Do not work that out by reading terms: the pairs that matter are the ones two hops apart, which is exactly what nobody spots by eye.
 
-When asked what to work on first, call analyze_pending and answer from what it returns. Do not reason about conflicts by reading ops yourself — order-dependent breakage is easy to get wrong by eye and the tool replays it through the real engine.${specCodeGuidance}`,
+When asked what to work on first, call analyze_pending and answer from what it returns. Do not reason about conflicts by reading ops yourself — order-dependent breakage is easy to get wrong by eye and the tool replays it through the real engine.
+
+If you are asked to do something you have no tool for — fetch a URL, search the web — do not imply it is impossible or that Spectra cannot do it. Say plainly that you do not have that tool here, and that the human can enable it for this project in the Agents settings.${specCodeGuidance}${specWebGuidance}`,
   },
 
   coder: {

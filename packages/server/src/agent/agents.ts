@@ -27,6 +27,11 @@ const APP_DIR = process.env.CODER_DIR ?? path.join(REPO, 'app')
 // sandboxed/attached deployment supplies this as a read-only mount, an in-process run points it at a
 // checkout on disk.
 const SPEC_CODE_DIR = process.env.SPEC_CODE_DIR
+// Opt-in reference tools for @spec (GH #145). Off unless set; a hosted deployment gates these with a
+// per-project toggle instead. `1`/`true` enables.
+const on = (v: string | undefined): boolean => v === '1' || v === 'true'
+const SPEC_WEB_FETCH = on(process.env.SPEC_WEB_FETCH)
+const SPEC_WEB_SEARCH = on(process.env.SPEC_WEB_SEARCH)
 
 /** This server's agents: the shared definitions, bound to this host's specs and app directories. */
 export function buildAgents(project: ProjectInfo): Record<AgentName, AgentDefinition> {
@@ -34,5 +39,7 @@ export function buildAgents(project: ProjectInfo): Record<AgentName, AgentDefini
     specsDir: SPECS_DIR,
     appDir: APP_DIR,
     ...(SPEC_CODE_DIR ? { specCodeDir: SPEC_CODE_DIR } : {}),
+    ...(SPEC_WEB_FETCH ? { specWebFetch: true } : {}),
+    ...(SPEC_WEB_SEARCH ? { specWebSearch: true } : {}),
   })
 }
