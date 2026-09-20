@@ -22,7 +22,17 @@ const REPO = path.resolve(SPECS_DIR, '..')
 // (The sandboxed @coder uses its own container path instead — APP_DIR in packages/runtime/src/main.ts.)
 const APP_DIR = process.env.CODER_DIR ?? path.join(REPO, 'app')
 
+// Opt-in (GH #136): the repo @spec may read, read-only, to surface specs from existing code and verify
+// against it. Unset ⇒ @spec stays code-blind (no filesystem), exactly as before. Mirrors CODER_DIR; a
+// sandboxed/attached deployment supplies this as a read-only mount, an in-process run points it at a
+// checkout on disk.
+const SPEC_CODE_DIR = process.env.SPEC_CODE_DIR
+
 /** This server's agents: the shared definitions, bound to this host's specs and app directories. */
 export function buildAgents(project: ProjectInfo): Record<AgentName, AgentDefinition> {
-  return buildAgentsFor(project, { specsDir: SPECS_DIR, appDir: APP_DIR })
+  return buildAgentsFor(project, {
+    specsDir: SPECS_DIR,
+    appDir: APP_DIR,
+    ...(SPEC_CODE_DIR ? { specCodeDir: SPEC_CODE_DIR } : {}),
+  })
 }
