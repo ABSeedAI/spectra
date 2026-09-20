@@ -89,9 +89,14 @@ const engine = createEngine({ agent: AGENT, appDir: APP_DIR, mcpUrl: MCP_URL, mc
  */
 function configureGit(): void {
   try {
-    execFileSync('git', ['config', '--global', 'user.name', process.env.GIT_AUTHOR_NAME ?? 'Spectra Coder'])
-    execFileSync('git', ['config', '--global', 'user.email', process.env.GIT_AUTHOR_EMAIL ?? 'coder@spectra.local'])
-    const username = process.env.GIT_USERNAME ?? 'x-access-token'
+    // `||`, not `??`: docker compose's `${VAR:-}` sets a variable to an *empty string* rather than
+    // leaving it absent, and `??` treats "" as present — so `GIT_USERNAME=${GIT_USERNAME:-}` would
+    // otherwise defeat the default and send an empty username, which forges like GitHub reject even
+    // with a valid token (a fine-grained PAT needs `x-access-token`). Same trap the server's
+    // credential check documents; empty must fall back here too.
+    execFileSync('git', ['config', '--global', 'user.name', process.env.GIT_AUTHOR_NAME || 'Spectra Coder'])
+    execFileSync('git', ['config', '--global', 'user.email', process.env.GIT_AUTHOR_EMAIL || 'coder@spectra.local'])
+    const username = process.env.GIT_USERNAME || 'x-access-token'
     if (process.env.GIT_CREDENTIAL_URL) {
       execFileSync('git', ['config', '--global', 'credential.helper', `!f() { curl -fsS -H "Authorization: Bearer $DEVICE_TOKEN" "$GIT_CREDENTIAL_URL" || true; }; f`])
     } else if (process.env.GIT_TOKEN) {
