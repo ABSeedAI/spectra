@@ -71,6 +71,13 @@ services:
       context: .
       dockerfile: Dockerfile.runtime
     container_name: spectra-attach-spec
+    volumes:
+      # The same repo @coder implements into, mounted READ-ONLY (GH #136). @spec only *uses* it when
+      # the coordinator's per-project profile grants it read tools (Read/Glob/Grep) — otherwise it has
+      # no filesystem tools and this mount is inert. Read-only: @spec can surface specs from the code
+      # and check the glossary against it, never change it. (Compose can't include a volume
+      # conditionally by env, so the mount is always present; the coordinator toggle is the opt-in.)
+      - ${ATTACH_PROJECT_DIR:-./app}:/work/project:ro
     environment:
       - NODE_ENV=production
       - MODE=attach
