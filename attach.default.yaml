@@ -46,12 +46,18 @@ services:
     cap_drop:
       - ALL
 
-  # @spec — same image, AGENT=spec, no filesystem tools and no mount.
+  # @spec — same image, AGENT=spec. Mounts the repo READ-ONLY (GH #136); it only uses it when the
+  # coordinator's per-project profile grants read tools, otherwise the mount is inert.
   spec:
     build:
       <<: *git-context
       dockerfile: Dockerfile.runtime
     container_name: spectra-attach-spec
+    volumes:
+      # Read-only view of the same repo @coder implements into. @spec reads it (to surface specs and
+      # verify the glossary against the code) only when the coordinator opts the project in; the mount
+      # is always present because compose cannot include a volume conditionally by env.
+      - ${ATTACH_PROJECT_DIR:-./app}:/work/project:ro
     environment:
       - NODE_ENV=production
       - MODE=attach
