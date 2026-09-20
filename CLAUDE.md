@@ -229,6 +229,7 @@ examples/todo/specs/questions/        what the glossary does not settle, and wha
 packages/core/src/                    the engine — types, valueType grammar, backlinks, conflicts, changeset ops
 packages/server/src/agent/agents.ts   the single definition of who @spec and @coder are
 packages/server/src/agent/runner.ts   runs a turn, streams it, blocks on approvals
+packages/server/src/agent/implementationScheduler.ts  GH #133: debounces applied changesets into one @coder turn (fires only into an unattended session); seam + in-process timer
 packages/server/src/agent/tools.ts    domain tools; mcpHttp.ts is the same tools over HTTP
 packages/server/src/specsExport.ts    the snapshot + version (README calls this glossaryExport.ts)
 packages/server/src/commit.ts         the only writer of specs/
