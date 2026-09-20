@@ -67,23 +67,51 @@ describe('planInit', () => {
     // The coder carries the same id, so its per-project MCP URL matches the spec's project.
     expect(yaml).toContain('PROJECT_ID=myrepo-abc123')
   })
+
+  it('leaves @spec code-blind by default — no read-only mount, no SPEC_CODE_DIR (GH #136)', () => {
+    const yaml = fileAt(planInit(base), 'compose.yaml')!.content
+    expect(yaml).not.toContain(':ro')
+    expect(yaml).not.toContain('SPEC_CODE_DIR')
+  })
+
+  it('with specReadsCode: mounts the repo :ro into @spec and enables SPEC_CODE_DIR on the coordinator', () => {
+    const yaml = fileAt(planInit({ ...base, specReadsCode: true }), 'compose.yaml')!.content
+    // Same repo @coder gets, but read-only for @spec.
+    expect(yaml).toContain('/home/u/myrepo:/work/project:ro')
+    // Coordinator (server) enables @spec's read tools + names the path in its prompt.
+    expect(yaml).toContain('SPEC_CODE_DIR=/work/project')
+    // @spec's cwd is the mount.
+    expect(yaml).toContain('APP_DIR=/work/project')
+    // @coder's own mount stays writable (quoted, not :ro).
+    expect(yaml).toContain('"/home/u/myrepo:/work/project"')
+  })
+
+  it('reads --dir for the @spec read-only mount too', () => {
+    const yaml = fileAt(planInit({ ...base, specReadsCode: true, coderDir: 'services/api' }), 'compose.yaml')!.content
+    expect(yaml).toContain('/home/u/myrepo/services/api:/work/project:ro')
+  })
 })
 
 describe('parseInitArgs', () => {
   it('parses name + domain, with optional dir/server/force/dry-run', () => {
     expect(parseInitArgs(['--name', 'Acme', '--domain', 'billing'])).toEqual({
       kind: 'ok',
-      options: { name: 'Acme', domain: 'billing', coderDir: undefined, server: undefined, force: false, dryRun: false },
+      options: { name: 'Acme', domain: 'billing', coderDir: undefined, server: undefined, specReadsCode: false, force: false, dryRun: false },
     })
     expect(
       parseInitArgs(['--name', 'A', '--domain', 'b', '--dir', 'api', '--server', 'http://x', '--force', '--dry-run']),
     ).toMatchObject({ kind: 'ok', options: { coderDir: 'api', server: 'http://x', force: true, dryRun: true } })
   })
 
+  it('parses --spec-reads-code as a boolean flag (default off)', () => {
+    expect(parseInitArgs(['--spec-reads-code'])).toMatchObject({ kind: 'ok', options: { specReadsCode: true } })
+    expect(parseInitArgs([])).toMatchObject({ kind: 'ok', options: { specReadsCode: false } })
+  })
+
   it('leaves name and domain undefined when omitted (caller defaults to the folder name)', () => {
     expect(parseInitArgs([])).toEqual({
       kind: 'ok',
-      options: { name: undefined, domain: undefined, coderDir: undefined, server: undefined, force: false, dryRun: false },
+      options: { name: undefined, domain: undefined, coderDir: undefined, server: undefined, specReadsCode: false, force: false, dryRun: false },
     })
     expect(parseInitArgs(['--name', 'A'])).toMatchObject({ kind: 'ok', options: { name: 'A', domain: undefined } })
   })

@@ -111,6 +111,7 @@ function runInit(argv: string[]): number {
     domain: parsed.options.domain ?? folder,
     coderDir: parsed.options.coderDir,
     server: parsed.options.server,
+    specReadsCode: parsed.options.specReadsCode,
     configHome: configHome(),
     dataHome: dataHome(),
     id: newProjectId(repoDir),
