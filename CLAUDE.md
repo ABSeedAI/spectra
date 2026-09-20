@@ -67,7 +67,9 @@ empty `./app` on the host). The in-process (unsandboxed) coder's cwd is `APP_DIR
 gains **read-only** code access there (`Read`/`Glob`/`Grep` only, that dir as its cwd) — for surfacing
 specs from an existing repo (brownfield) and checking the glossary against the code. Unset ⇒ unchanged.
 A sandboxed/attached deployment supplies this as a read-only mount (that plumbing is a later slice);
-in-process, it points at a checkout on disk.
+in-process, it points at a checkout on disk. Reference tools (GH #145): `SPEC_WEB_FETCH=1` /
+`SPEC_WEB_SEARCH=1` grant `@spec` `WebFetch` / `WebSearch` (auto-approved; propose-only, so still
+human-gated). All off by default; a hosted deployment gates each with a per-project toggle instead.
 
 The *drift check* that used to be copied into `app/` (`specs.snapshot.json` + `implements.test.ts`)
 now ships as the **`@abseed/spectra-drift-check`** package (`packages/drift-check`): a consumer project adds
