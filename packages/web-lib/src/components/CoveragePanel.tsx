@@ -74,10 +74,15 @@ export function CoveragePanel({
             { key: 'covered', label: 'covered', count: covered.length },
           ]}
         />
-        <span className="muted coverage-note">
-          lifecycle pairs — an entity and something that happens to it
-        </span>
       </h2>
+
+      <p className="muted coverage-legend">
+        Each row pairs an <b>entity</b> with an <b>action</b> — a function or event — that touches it.
+        E.g. <code>User × Event</code> asks <i>what should happen to a User when an Event is recorded</i>.
+        A gap means no expectation says the outcome; use “say what should happen” to add one.{' '}
+        <code>dN</code> is how far apart the two are in the term graph — <code>d1</code> is directly
+        related; higher means reached through other terms, which is where gaps hide.
+      </p>
 
       {coverage.contested.length > 0 && (
         <ul className="contested-list">
@@ -183,14 +188,26 @@ function PairRow({
           d{pair.distance}
         </span>
 
-        <span className="coverage-pair">
+        <span
+          className="coverage-pair"
+          title={
+            gap
+              ? `${pair.entity} × ${pair.action}: no expectation says what should happen when they interact`
+              : `${pair.entity} × ${pair.action}: covered by an expectation`
+          }
+        >
           <TermRef name={pair.entity} known={known} onSelect={onSelectTerm} />
           <span className="muted"> × </span>
           <TermRef name={pair.action} known={known} onSelect={onSelectTerm} />
         </span>
 
         {gap ? (
-          <span className="muted coverage-empty">nothing says what should happen</span>
+          <span
+            className="muted coverage-empty"
+            title={`No expectation names both ${pair.entity} and ${pair.action}, so the outcome is unspecified — “say what should happen” to add one.`}
+          >
+            nothing says what should happen
+          </span>
         ) : (
           <span className="coverage-ids">
             {pair.expectations.map((id) => (

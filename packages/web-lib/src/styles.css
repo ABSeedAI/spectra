@@ -1498,6 +1498,16 @@ button.option:hover {
   margin-left: auto;
 }
 
+/* The explainer under the Coverage header — what a pair, a gap, and dN mean. */
+.coverage-legend {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 2px 0 10px;
+}
+.coverage-legend code {
+  font-size: 11.5px;
+}
+
 .coverage-list {
   list-style: none;
   margin: 0;
