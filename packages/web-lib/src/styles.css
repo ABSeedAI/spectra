@@ -355,6 +355,32 @@ button {
   font-size: 11px;
 }
 
+/* The sticky-addressee pill: who messages go to without re-typing @spec/@coder. */
+.stick {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 4px 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  white-space: nowrap;
+}
+.stick-clear {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1;
+}
+.stick-clear:hover {
+  color: var(--text);
+}
+
 /*
  * Quiet when off, unmistakable when on. This is a permission you granted; it should be
  * visible from where the work happens rather than remembered.
