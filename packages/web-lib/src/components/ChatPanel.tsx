@@ -52,6 +52,31 @@ interface ChatPanelProps {
   onSpecsChanged: () => void
   onSelectTerm: (name: string) => void
   onClose: () => void
+  /**
+   * A stable per-project (or per-user+project) key. When set, the unsent composer draft is saved to
+   * localStorage under it and restored — so a session timeout or reload between typing and sending a
+   * (possibly very long) message doesn't lose it. Omit to disable persistence.
+   */
+  draftKey?: string
+}
+
+const DRAFT_PREFIX = 'spectra.draft.'
+// localStorage throws in a private window or with site data blocked; a lost/kept draft is a nicety,
+// never load-bearing, so every access is wrapped and failure is silent.
+function readDraft(key: string): string {
+  try {
+    return localStorage.getItem(DRAFT_PREFIX + key) ?? ''
+  } catch {
+    return ''
+  }
+}
+function writeDraft(key: string, value: string): void {
+  try {
+    if (value) localStorage.setItem(DRAFT_PREFIX + key, value)
+    else localStorage.removeItem(DRAFT_PREFIX + key)
+  } catch {
+    // no-op: persisting the draft is best-effort
+  }
 }
 
 /**
@@ -61,7 +86,7 @@ interface ChatPanelProps {
 const UNATTENDED_HELP =
   'Skip the approval card for this conversation. Only available while @coder is in its sandbox: no network, no credential, and app/ the only thing it can write. Commands on the denylist stay refused, and everything it does is still recorded.'
 
-export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: ChatPanelProps) {
+export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose, draftKey }: ChatPanelProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [events, setEvents] = useState<ChatEvent[]>([])
@@ -69,7 +94,20 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   const [running, setRunning] = useState(false)
   const [configured, setConfigured] = useState(true)
   const [agents, setAgents] = useState<Agent[]>([])
-  const [draft, setDraft] = useState('')
+  // Restored from localStorage on first render so a reload doesn't start blank (GH: draft persistence).
+  const [draft, setDraft] = useState(() => (draftKey ? readDraft(draftKey) : ''))
+  // Persist the draft on every change, and reload it when the project (draftKey) changes — so a
+  // session timeout or reload between typing and sending a long message keeps it. submit() clears the
+  // draft on a successful send, and the persist effect then removes the stored key.
+  const draftKeyRef = useRef(draftKey)
+  useEffect(() => {
+    if (draftKeyRef.current === draftKey) return // not a project switch — don't clobber the live draft
+    draftKeyRef.current = draftKey
+    setDraft(draftKey ? readDraft(draftKey) : '')
+  }, [draftKey])
+  useEffect(() => {
+    if (draftKey) writeDraft(draftKey, draft)
+  }, [draft, draftKey])
   const [unattended, setUnattendedState] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

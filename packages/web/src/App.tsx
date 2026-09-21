@@ -373,6 +373,8 @@ export function App() {
           onSpecsChanged={handleSpecsChanged}
           onSelectTerm={setSelected}
           onClose={() => setChatOpen(false)}
+          // Persist the unsent draft per project, so a reload/timeout mid-typing doesn't lose it.
+          draftKey={projectId ? `${org ?? 'local'}/${projectId}` : undefined}
         />
       )}
     </div>
