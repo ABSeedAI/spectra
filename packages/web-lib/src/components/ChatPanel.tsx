@@ -96,6 +96,9 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose, dra
   const [agents, setAgents] = useState<Agent[]>([])
   // Restored from localStorage on first render so a reload doesn't start blank (GH: draft persistence).
   const [draft, setDraft] = useState(() => (draftKey ? readDraft(draftKey) : ''))
+  // The agent to keep addressing without re-typing @spec/@coder each message. Set to whoever you last
+  // @-mentioned; a new @mention switches it; clearable. So a long one-agent chat is just messages.
+  const [stuck, setStuck] = useState<string | null>(null)
   // Persist the draft on every change, and reload it when the project (draftKey) changes — so a
   // session timeout or reload between typing and sending a long message keeps it. submit() clears the
   // draft on a successful send, and the persist effect then removes the stored key.
@@ -374,8 +377,14 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose, dra
     setRunning(true)
     setError(null)
 
+    // Explicit @mention wins and becomes the new sticky target; otherwise keep addressing whoever's
+    // stuck, so you don't re-type @spec every message. Clearing stick → an unaddressed message again.
+    const explicit = addresseeOf(text, agentNames)
+    const addressee = explicit ?? stuck
+    if (explicit && explicit !== stuck) setStuck(explicit)
+
     try {
-      const outcome = await sendMessage(target, text, addresseeOf(text, agentNames))
+      const outcome = await sendMessage(target, text, addressee)
       if (!outcome.ok) {
         setError(outcome.error ?? 'The message was refused.')
         setRunning(false)
@@ -417,6 +426,8 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose, dra
 
   const agentNames = agents.map((agent) => agent.name)
   const to = addresseeOf(draft, agentNames)
+  // Who a message with no explicit @mention would go to right now.
+  const effectiveTo = to ?? stuck
 
   // `@` completes over who is in the channel, `#` over what the glossary holds.
   const suggestions =
@@ -576,14 +587,25 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose, dra
               <>
                 Tab to complete <strong>{mention.sigil === 'agent' ? '@' : '#'}{mention.query}</strong>
               </>
-            ) : to ? (
+            ) : effectiveTo ? (
               <>
-                to <strong className={`author author-${to}`}>@{to}</strong> · Enter to send
+                to <strong className={`author author-${effectiveTo}`}>@{effectiveTo}</strong>
+                {!to && stuck ? <span className="muted"> (sticky)</span> : null} · Enter to send
               </>
             ) : (
               'Address @spec or @coder — an unaddressed message is recorded but acted on by nobody'
             )}
           </span>
+          {/* Who you're addressing without re-typing @spec/@coder. Set by your last @mention; switch by
+              @-mentioning the other agent; ✕ to stop and go back to explicit addressing. */}
+          {stuck && (
+            <span className={`stick author-${stuck}`} title={`Replying to @${stuck} — @-mention the other agent to switch, or ✕ to stop`}>
+              ↳ @{stuck}
+              <button type="button" className="stick-clear" onClick={() => setStuck(null)} aria-label={`Stop replying to @${stuck}`}>
+                ✕
+              </button>
+            </span>
+          )}
           {/*
             Kept visible while it is on, not tucked into a menu. A permission you cannot see
             from where the work is happening is one you forget you granted.
