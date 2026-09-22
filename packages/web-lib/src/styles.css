@@ -900,6 +900,25 @@ button {
   border-color: currentColor;
 }
 
+/* GH #137: @coder says it can't finish without this answer — visually urgent. */
+.pill-blocking {
+  color: var(--remove);
+  border-color: currentColor;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.question.blocking {
+  border-left: 2px solid var(--remove);
+}
+
+.blocking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
 .question,
 .proposal {
   border: 1px solid var(--line);

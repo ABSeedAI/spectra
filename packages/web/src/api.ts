@@ -137,6 +137,11 @@ export function answerQuestion(id: string, chose: string | null, note: string): 
   return post(apiPath(`/questions/${encodeURIComponent(id)}/answer`), { chose, note })
 }
 
+/** GH #137: human override of a question's blocking flag. */
+export function setQuestionBlocking(id: string, blocking: boolean): Promise<CommitOutcome> {
+  return post(apiPath(`/questions/${encodeURIComponent(id)}/blocking`), { blocking })
+}
+
 /**
  * Reads a draft against the glossary and writes nothing, so a bad one can be killed unborn.
  *
@@ -208,6 +213,7 @@ export const apiTransport: GlossaryTransport = {
   markImplemented,
   rejectChangeset,
   answerQuestion,
+  setQuestionBlocking,
   checkExpectation,
   raiseExpectation,
   recheckExpectation,

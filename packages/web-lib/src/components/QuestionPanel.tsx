@@ -9,6 +9,8 @@ interface QuestionPanelProps {
   known: Set<string>
   onSelectTerm: (name: string) => void
   onAnswer: (id: string, chose: string | null, note: string) => void
+  /** Human override of @coder's blocking flag (GH #137). Omitted when the host doesn't wire it. */
+  onSetBlocking?: (id: string, blocking: boolean) => void
   busy: boolean
 }
 
@@ -24,13 +26,17 @@ const DEFAULT_FILTERS = new Set(['unanswered'])
  * top because an unanswered question is a decision nobody has made yet; answered ones are
  * a click away behind the "decided" pill.
  */
-export function QuestionPanel({ questions, known, onSelectTerm, onAnswer, busy }: QuestionPanelProps) {
+export function QuestionPanel({ questions, known, onSelectTerm, onAnswer, onSetBlocking, busy }: QuestionPanelProps) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [filters, setFilters] = useState<ReadonlySet<string>>(DEFAULT_FILTERS)
 
   if (questions.length === 0) return null
 
-  const open = questions.filter((question) => !question.answer)
+  // Blocking-and-open floats to the top: @coder said it can't finish without this (GH #137).
+  // Blocking is effective only while open, so answered questions never sort by it.
+  const open = questions
+    .filter((question) => !question.answer)
+    .sort((a, b) => (b.blocking ? 1 : 0) - (a.blocking ? 1 : 0))
   const answered = questions.filter((question) => question.answer)
 
   const shown = [
@@ -67,6 +73,7 @@ export function QuestionPanel({ questions, known, onSelectTerm, onAnswer, busy }
           known={known}
           onSelectTerm={onSelectTerm}
           onAnswer={onAnswer}
+          onSetBlocking={onSetBlocking}
           busy={busy}
         />
       ))}
@@ -81,6 +88,7 @@ function QuestionCard({
   known,
   onSelectTerm,
   onAnswer,
+  onSetBlocking,
   busy,
 }: {
   question: Question
@@ -89,6 +97,7 @@ function QuestionCard({
   known: Set<string>
   onSelectTerm: (name: string) => void
   onAnswer: (id: string, chose: string | null, note: string) => void
+  onSetBlocking?: (id: string, blocking: boolean) => void
   busy: boolean
 }) {
   const [chose, setChose] = useState<string | null>(null)
@@ -96,6 +105,8 @@ function QuestionCard({
 
   const answer = question.answer
   const decided = answer !== null
+  // Blocking is effective only while open; an answered question blocks nothing.
+  const blocking = !decided && question.blocking === true
 
   // The number of options *is* the answer shape — one is approve-or-decline, several is a
   // choice, none means only the human can write the spec text.
@@ -107,9 +118,10 @@ function QuestionCard({
         : `${question.options.length} ways to go`
 
   return (
-    <article className={`question ${decided ? 'decided' : 'open'}`}>
+    <article className={`question ${decided ? 'decided' : 'open'} ${blocking ? 'blocking' : ''}`}>
       <button type="button" className="question-head" onClick={onToggle}>
         <span className="question-id">{question.id}</span>
+        {blocking && <span className="pill pill-blocking" title="@coder can't finish without this answer">blocking</span>}
         <span className="asks">{question.asks}</span>
         <span className={`pill ${decided ? '' : 'pill-open'}`}>
           {decided ? answer.chose ?? 'answered' : shape}
@@ -140,6 +152,25 @@ function QuestionCard({
               </>
             )}
           </p>
+
+          {!decided && onSetBlocking && (
+            <p className="blocking-toggle">
+              <button
+                type="button"
+                className="action"
+                disabled={busy}
+                onClick={() => onSetBlocking(question.id, !blocking)}
+                title="Blocking questions rise to the top of the queue"
+              >
+                {blocking ? 'Clear blocking' : 'Mark blocking'}
+              </button>
+              <span className="muted">
+                {blocking
+                  ? 'Flagged blocking — it sits at the top until answered.'
+                  : 'Flag if this must be answered before work can continue.'}
+              </span>
+            </p>
+          )}
 
           {question.options.map((option) => (
             <OptionCard

@@ -299,6 +299,23 @@ describe('SqlSpecStore writeAnswer + CAS', () => {
   })
 })
 
+describe('SqlSpecStore setQuestionBlocking (GH #137)', () => {
+  it('sets then clears blocking, bumping rev; leaves nothing behind when cleared', async () => {
+    await store.addQuestion(question('q-001'))
+    expect(await store.setQuestionBlocking('q-001', true)).toMatchObject({ ok: true, rev: 2 })
+    expect((await store.findQuestion('q-001'))?.blocking).toBe(true)
+    expect(await store.setQuestionBlocking('q-001', false)).toMatchObject({ ok: true, rev: 3 })
+    expect((await store.findQuestion('q-001'))?.blocking).toBeUndefined()
+  })
+
+  it('reports not-found for an unknown id and guards on expectedRev', async () => {
+    expect(await store.setQuestionBlocking('q-404', true)).toEqual({ ok: false, reason: 'not-found' })
+    await store.addQuestion(question('q-001'))
+    await store.setQuestionBlocking('q-001', true) // rev 1 → 2
+    expect(await store.setQuestionBlocking('q-001', true, 1)).toEqual({ ok: false, reason: 'conflict', currentRev: 2 })
+  })
+})
+
 describe('SqlSpecStore retire / rewrite expectation + CAS', () => {
   it('retires a live expectation, bumping rev; guards on expectedRev', async () => {
     await store.addExpectation(expectation('e-001'))

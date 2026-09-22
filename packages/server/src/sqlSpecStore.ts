@@ -485,6 +485,25 @@ export class SqlSpecStore implements SpecStore {
     return { ok: true, rev: g.next, at: questionId }
   }
 
+  async setQuestionBlocking(questionId: string, blocking: boolean, expectedRev?: number): Promise<MutationResult> {
+    const row = this.db.prepare('SELECT rev, json FROM questions WHERE project_id = ? AND id = ?').get(this.projectId, questionId) as
+      | { rev: number; json: string }
+      | undefined
+    if (!row) return { ok: false, reason: 'not-found' }
+    const g = this.guard(row.rev, expectedRev)
+    if (!g.ok) return { ok: false, reason: 'conflict', currentRev: g.currentRev }
+
+    // Kept off the record when false — a cleared flag reads exactly as an un-flagged question.
+    const question = JSON.parse(row.json)
+    if (blocking) question.blocking = true
+    else delete question.blocking
+    const result = this.db
+      .prepare('UPDATE questions SET json = ?, rev = ? WHERE project_id = ? AND id = ? AND rev = ?')
+      .run(JSON.stringify({ ...question, rev: g.next }), g.next, this.projectId, questionId, row.rev)
+    if (result.changes === 0) return { ok: false, reason: 'conflict', currentRev: this.revOf('questions', questionId) }
+    return { ok: true, rev: g.next, at: questionId }
+  }
+
   async retireExpectation(id: string, retired: Expectation, expectedRev?: number): Promise<MutationResult> {
     const row = this.db
       .prepare("SELECT rev FROM expectations WHERE project_id = ? AND id = ? AND lifecycle = 'live'")

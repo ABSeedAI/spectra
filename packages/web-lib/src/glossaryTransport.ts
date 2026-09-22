@@ -161,6 +161,8 @@ export interface GlossaryTransport {
   rejectChangeset(id: string): Promise<CommitOutcome>
 
   answerQuestion(id: string, chose: string | null, note: string): Promise<AnswerOutcome>
+  /** Human override of a question's blocking flag (GH #137). Optional: a host that does not support it leaves it unset. */
+  setQuestionBlocking?(id: string, blocking: boolean): Promise<CommitOutcome>
 
   checkExpectation(draft: ExpectationDraft, superseding?: string): Promise<CheckReport>
   raiseExpectation(draft: ExpectationDraft, contested?: CheckReport['findings']): Promise<RaiseOutcome>

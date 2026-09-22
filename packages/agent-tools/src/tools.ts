@@ -336,6 +336,12 @@ export function pureTools(store: SpecStore, transcripts: TranscriptStore, author
           }),
         )
         .describe('Candidate answers; may be empty when only the human can write the spec'),
+      blocking: z
+        .boolean()
+        .optional()
+        .describe(
+          'Set true only if you (@coder) cannot correctly finish implementing the applied changeset(s) without this answer — it floats the question to the top for the human. Leave unset for a question you can proceed past. Honoured only when you are @coder; ignored otherwise.',
+        ),
     },
     async (args) => {
       const outcome = await raiseQuestion(
@@ -347,6 +353,7 @@ export function pureTools(store: SpecStore, transcripts: TranscriptStore, author
           file: args.file,
           terms: args.terms,
           options: args.options as RaiseRequest['options'],
+          blocking: args.blocking,
         },
         author,
       )

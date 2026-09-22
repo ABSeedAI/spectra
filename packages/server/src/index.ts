@@ -622,6 +622,26 @@ glossary.post('/questions/:id/answer', async (req, res, next) => {
   }
 })
 
+// GH #137: the human override over @coder's blocking flag. A plain field write, guarded by the
+// store's rev CAS; no answer semantics, so it stays a separate route from /answer.
+glossary.post('/questions/:id/blocking', async (req, res, next) => {
+  try {
+    const body = req.body as { blocking?: unknown }
+    if (typeof body?.blocking !== 'boolean') {
+      res.status(400).json({ error: 'Expected { blocking: boolean }.' })
+      return
+    }
+    const result = await storeOf(res).setQuestionBlocking(req.params.id, body.blocking)
+    if (!result.ok) {
+      res.status(result.reason === 'not-found' ? 404 : 409).json(result)
+      return
+    }
+    res.json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.use('/api/orgs/:org/projects/:projectId', scope, glossary)
 
 app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

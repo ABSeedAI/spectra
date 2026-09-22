@@ -116,4 +116,49 @@ describe('raiseQuestion', () => {
     expect(second.file).not.toBe(first.file)
     expect(second.id).not.toBe(first.id)
   })
+
+  // GH #137: blocking is an implementation-state signal, so only @coder may originate it.
+  it('honours blocking from a coder author', async () => {
+    const outcome = await raiseQuestion(store, { ...BASE, asks: 'Blocking one?', options: [], blocking: true }, { kind: 'coder' })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.question.blocking).toBe(true)
+    const written = JSON.parse(await readFile(path.join(specs, 'questions', outcome.file), 'utf8'))
+    expect(written.blocking).toBe(true)
+  })
+
+  it('ignores blocking from a non-coder author', async () => {
+    const outcome = await raiseQuestion(store, { ...BASE, asks: 'Not blocking?', options: [], blocking: true }, { kind: 'spec' })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.question.blocking).toBeUndefined()
+  })
+
+  it('leaves blocking off the record when a coder does not set it', async () => {
+    const outcome = await raiseQuestion(store, { ...BASE, asks: 'Plain one?', options: [] }, { kind: 'coder' })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    const written = JSON.parse(await readFile(path.join(specs, 'questions', outcome.file), 'utf8'))
+    expect('blocking' in written).toBe(false)
+  })
+
+  it('setQuestionBlocking sets then clears the flag, bumping rev', async () => {
+    const raised = await raiseQuestion(store, { ...BASE, asks: 'Toggle me?', options: [] }, BY)
+    expect(raised.ok).toBe(true)
+    if (!raised.ok) return
+
+    const set = await store.setQuestionBlocking(raised.id, true)
+    expect(set).toMatchObject({ ok: true })
+    let written = JSON.parse(await readFile(path.join(specs, 'questions', raised.file), 'utf8'))
+    expect(written.blocking).toBe(true)
+
+    const cleared = await store.setQuestionBlocking(raised.id, false)
+    expect(cleared).toMatchObject({ ok: true })
+    written = JSON.parse(await readFile(path.join(specs, 'questions', raised.file), 'utf8'))
+    expect('blocking' in written).toBe(false)
+  })
+
+  it('setQuestionBlocking reports not-found for an unknown id', async () => {
+    expect(await store.setQuestionBlocking('q-999', true)).toEqual({ ok: false, reason: 'not-found' })
+  })
 })

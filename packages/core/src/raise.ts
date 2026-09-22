@@ -22,6 +22,12 @@ export interface RaiseRequest {
   options: Array<{ label: string; detail?: string; proposal?: Proposal | null }>
   /** Draft or published. Absent means `ready`; agents always raise `ready`. */
   status?: RecordStatus
+  /**
+   * Marks the question blocking (GH #137) — set by @coder when it cannot finish implementing
+   * without the answer. Honoured only for a `coder` author: blocking is an implementation-state
+   * signal, so a request from any other author is ignored (see below).
+   */
+  blocking?: boolean
 }
 
 export type RaiseOutcome =
@@ -41,6 +47,11 @@ export async function raiseQuestion(
     proposal: option.proposal ?? null,
   }))
 
+  // Blocking is a fact about @coder's implementation state, so only @coder may set it at raise
+  // time; a human overrides later through setQuestionBlocking. Kept off the record when false so
+  // question files stay minimal (a fixed, small key set), matching the serializer elsewhere.
+  const blocking = author.kind === 'coder' && request.blocking === true
+
   const question: Question = {
     id,
     asks: request.asks,
@@ -54,6 +65,7 @@ export async function raiseQuestion(
     status: request.status ?? 'ready',
     rev: 1,
     options,
+    ...(blocking ? { blocking: true } : {}),
     answer: null,
   }
 

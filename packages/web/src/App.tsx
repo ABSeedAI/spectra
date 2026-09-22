@@ -57,6 +57,7 @@ export function App() {
     selectProject,
     commit,
     recordAnswer,
+    setBlocking,
     raise,
     recheck,
     supersede,
@@ -244,6 +245,7 @@ export function App() {
         known={known}
         onSelectTerm={setSelected}
         onAnswer={recordAnswer}
+        onSetBlocking={setBlocking}
         busy={busy}
       />
 
