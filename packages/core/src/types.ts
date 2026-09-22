@@ -147,6 +147,15 @@ export interface Question {
    * the human can write the spec text.
    */
   options: QuestionOption[]
+  /**
+   * Raised by @coder as *blocking* when it cannot correctly finish implementing the applied
+   * changeset(s) without this answer (GH #137). An attention signal about implementation state,
+   * not a domain fact — only @coder originates it (it is the one actor that knows whether it can
+   * proceed), and a human may override it either way. It floats the question to the top of the
+   * queue. Effective only while the question is open: an answered question blocks nothing, so a
+   * consumer reads it as `blocking && !answer` rather than the flag alone. Absent means not blocking.
+   */
+  blocking?: boolean
   /** Null while open. Kept after answering — the reasoning outlives the changeset. */
   answer: Answer | null
 }

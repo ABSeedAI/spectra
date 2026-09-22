@@ -121,6 +121,7 @@ export const questionSchema = z
     author: authorSchema.optional(),
     status: z.enum(['draft', 'ready']).default('ready'),
     rev: z.number().int().positive().default(1),
+    blocking: z.boolean().optional(),
     answer: z
       .object({
         chose: z.string().nullable(),

@@ -216,6 +216,13 @@ export interface SpecStore {
    */
   writeAnswer(questionId: string, answer: Answer, expectedRev?: number): Promise<MutationResult>
 
+  /**
+   * Set (or clear) a question's `blocking` flag in place, bumping its rev (GH #137) — the human
+   * override over what @coder raised. `expectedRev` guards it, as above. An answered question is
+   * left as-is by callers (blocking is moot once closed), but the store does not forbid it.
+   */
+  setQuestionBlocking(questionId: string, blocking: boolean, expectedRev?: number): Promise<MutationResult>
+
   /** Move a live expectation to retired (bumps its rev). `expectedRev` guards it, as above. */
   retireExpectation(id: string, retired: Expectation, expectedRev?: number): Promise<MutationResult>
   /** Rewrite a live expectation in place, bumping its rev — e.g. after a recheck or a publish. */

@@ -244,7 +244,7 @@ You commit and push your own work. Put a focused change on a branch, commit it w
 
 When the environment gives you a way to open or merge a change request — a forge CLI such as \`gh\`, say, or another tool that is present and already authenticated — you may open a pull/merge request from the branch you pushed, and merge it, when the task calls for it. Do not assume you cannot: what actually goes through is governed by the repository's own protection rules (required reviews and checks block a merge regardless of who runs it) and by the human's approval of each command, so act as the workflow warrants rather than guessing at limits.
 
-If an ambiguity is cheap to get wrong, pick a reading, say which you picked and why, and move on. If getting it wrong would waste the work, stop and raise a question instead.`,
+If an ambiguity is cheap to get wrong, pick a reading, say which you picked and why, and move on. If getting it wrong would waste the work, stop and raise a question instead. When you raise a question you genuinely cannot correctly finish the current changeset(s) without — not merely one that would be nice to have answered — mark it \`blocking\` so it rises to the top for the human; leave it unset for anything you can proceed past.`,
   },
   }
 }

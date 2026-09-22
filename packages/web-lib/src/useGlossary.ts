@@ -208,6 +208,29 @@ export function useGlossary(transport: GlossaryTransport) {
     [load, transport],
   )
 
+  // GH #137: human override of @coder's blocking flag. A field write, not an answer — reload so
+  // the question re-sorts (blocking floats to the top). No-op if the host doesn't implement it.
+  const setBlocking = useCallback(
+    async (id: string, blocking: boolean) => {
+      if (!transport.setQuestionBlocking) return
+      setBusy(true)
+      setNotice(null)
+      try {
+        const outcome = await transport.setQuestionBlocking(id, blocking)
+        if (!outcome.ok) {
+          setNotice({ tone: 'bad', message: outcome.error ?? 'Could not change the blocking flag.' })
+          return
+        }
+        await load()
+      } catch (cause) {
+        setNotice({ tone: 'bad', message: (cause as Error).message })
+      } finally {
+        setBusy(false)
+      }
+    },
+    [load, transport],
+  )
+
   /**
    * Both writes reload and report, and neither goes through `commit` — that helper speaks in
    * ops applied and files written, which is the vocabulary of changing the glossary. These do
@@ -306,6 +329,8 @@ export function useGlossary(transport: GlossaryTransport) {
     selectProject,
     commit,
     recordAnswer,
+    // undefined when the transport can't do it, so a host can gate the UI on its presence.
+    setBlocking: transport.setQuestionBlocking ? setBlocking : undefined,
     raise,
     recheck,
     supersede,

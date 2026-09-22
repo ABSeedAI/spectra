@@ -687,6 +687,22 @@ export class FileSystemSpecStore implements SpecStore {
     return { ok: true, rev: cas.next, at: entry.file }
   }
 
+  async setQuestionBlocking(questionId: string, blocking: boolean, expectedRev?: number): Promise<MutationResult> {
+    const entry = await this.findQuestionEntry(questionId)
+    if (!entry) return { ok: false, reason: 'not-found' }
+
+    const cas = this.casCheck(entry.question.rev, expectedRev)
+    if (!cas.ok) return { ok: false, reason: 'conflict', currentRev: cas.currentRev }
+
+    // Kept off the record when false, so a cleared flag leaves the file exactly as an
+    // un-flagged question — `absent means not blocking`, matching raise.ts.
+    const next = { ...entry.question, rev: cas.next }
+    if (blocking) next.blocking = true
+    else delete next.blocking
+    await this.writeJson(path.join(this.questionsDir, entry.file), next)
+    return { ok: true, rev: cas.next, at: entry.file }
+  }
+
   async retireExpectation(id: string, retired: Expectation, expectedRev?: number): Promise<MutationResult> {
     const entry = await this.findExpectationEntry(id)
     if (!entry) return { ok: false, reason: 'not-found' }
