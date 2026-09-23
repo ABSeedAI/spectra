@@ -4,6 +4,24 @@ import { buildAgents } from './agents.js'
 const project = { name: 'Shop', domain: 'online shopping' }
 const paths = { specsDir: '/data/specs', appDir: '/work/project' }
 
+describe('buildAgents — System Brief injection (GH #143)', () => {
+  it('injects the brief into both agents when present', () => {
+    const briefed = { ...project, brief: 'An HTTP API for gamification; no UI of its own.' }
+    const { spec, coder } = buildAgents(briefed, paths)
+    for (const agent of [spec, coder]) {
+      expect(agent.systemPrompt).toContain('System Brief')
+      expect(agent.systemPrompt).toContain('An HTTP API for gamification; no UI of its own.')
+    }
+  })
+
+  it('omits the brief section entirely when absent', () => {
+    const { spec, coder } = buildAgents(project, paths)
+    for (const agent of [spec, coder]) {
+      expect(agent.systemPrompt).not.toContain('System Brief')
+    }
+  })
+})
+
 describe('buildAgents — @spec code access (GH #136)', () => {
   it('is code-blind by default: no filesystem, cwd on the glossary', () => {
     const { spec } = buildAgents(project, paths)

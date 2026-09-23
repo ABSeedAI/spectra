@@ -102,6 +102,15 @@ export function useGlossary(transport: GlossaryTransport) {
       const info = inOrg.find((entry) => entry.id === nextProjectId)
       if (info) setProject({ name: info.name, domain: info.domain })
       await load()
+      // Upgrade the summary-based identity to the full one, which carries the System Brief (#143).
+      // Optional on the transport; keep the summary if it can't.
+      if (transport.fetchProject) {
+        try {
+          setProject(await transport.fetchProject())
+        } catch {
+          /* keep the summary identity */
+        }
+      }
     },
     [load, transport],
   )
@@ -231,6 +240,26 @@ export function useGlossary(transport: GlossaryTransport) {
     [load, transport],
   )
 
+  // GH #143: save the System Brief and update the shown identity (no glossary reload — it's project
+  // identity, not glossary content). No-op if the host doesn't implement it.
+  const setBrief = useCallback(
+    async (brief: string) => {
+      if (!transport.setProjectBrief) return
+      setBusy(true)
+      setNotice(null)
+      try {
+        const updated = await transport.setProjectBrief(brief)
+        setProject(updated)
+        setNotice({ tone: 'ok', message: brief.trim() ? 'saved the system brief' : 'cleared the system brief' })
+      } catch (cause) {
+        setNotice({ tone: 'bad', message: (cause as Error).message })
+      } finally {
+        setBusy(false)
+      }
+    },
+    [transport],
+  )
+
   /**
    * Both writes reload and report, and neither goes through `commit` — that helper speaks in
    * ops applied and files written, which is the vocabulary of changing the glossary. These do
@@ -331,6 +360,7 @@ export function useGlossary(transport: GlossaryTransport) {
     recordAnswer,
     // undefined when the transport can't do it, so a host can gate the UI on its presence.
     setBlocking: transport.setQuestionBlocking ? setBlocking : undefined,
+    setBrief: transport.setProjectBrief ? setBrief : undefined,
     raise,
     recheck,
     supersede,

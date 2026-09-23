@@ -139,6 +139,15 @@ export class FileSystemSpecStore implements SpecStore {
     return parsed.value
   }
 
+  async setProjectBrief(brief: string): Promise<void> {
+    // Preserve name/domain, set the brief (empty/whitespace clears it — kept off the file so an
+    // un-briefed project.json is byte-identical to before this feature).
+    const current = await this.projectInfo()
+    const next: ProjectInfo = { name: current.name, domain: current.domain }
+    if (brief.trim()) next.brief = brief
+    await this.writeJson(this.projectFile, next)
+  }
+
   // ── Low-level ────────────────────────────────────────────────────────────────────────
 
   private async listJsonFiles(dir: string): Promise<string[]> {

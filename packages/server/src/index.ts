@@ -215,6 +215,21 @@ glossary.get('/project', async (_req, res, next) => {
   }
 })
 
+// GH #143: set (or clear) the System Brief. Human-authored product framing; empty string clears it.
+glossary.post('/project/brief', async (req, res, next) => {
+  try {
+    const body = req.body as { brief?: unknown }
+    if (typeof body?.brief !== 'string') {
+      res.status(400).json({ error: 'Expected { brief: string }.' })
+      return
+    }
+    await storeOf(res).setProjectBrief(body.brief)
+    res.json(await storeOf(res).projectInfo())
+  } catch (error) {
+    next(error)
+  }
+})
+
 glossary.get('/terms', async (_req, res, next) => {
   try {
     // `version` is the glossary's content token (GH #93): the UI records it and passes it back as
