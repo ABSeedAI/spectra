@@ -319,6 +319,7 @@ export function pureTools(store: SpecStore, transcripts: TranscriptStore, author
       'If it cannot be phrased as a question someone answers, it does not belong here.',
       '`because` must quote the spec text in conflict. "This was awkward to implement" is not grounds to change a spec; "these two spec sentences cannot both hold" is.',
       'The number of options is the answer shape: one means approve-or-decline, several means a genuine choice (do not signal a favourite by ordering), none means only the human can write the spec text.',
+      'When an option would change the specs, attach the changeset it implies as its `proposal` (leave it null when the option changes no specs). Filling a proposal for every applicable option lets answering apply the chosen one directly, and lays out what each choice would do — that is showing the fork, not settling it.',
       'Do not use this to propose a change you are confident about and could simply describe — that is what a changeset is for.',
     ].join(' '),
     {
