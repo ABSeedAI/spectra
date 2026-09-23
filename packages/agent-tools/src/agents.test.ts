@@ -22,6 +22,22 @@ describe('buildAgents — System Brief injection (GH #143)', () => {
   })
 })
 
+describe('buildAgents — ADR discipline (GH #144)', () => {
+  it('teaches @coder the ADR bar, the record-vs-surface split, and where they live', () => {
+    const { coder } = buildAgents(project, paths)
+    expect(coder.systemPrompt).toContain('docs/adr/')
+    expect(coder.systemPrompt).toContain('append-only')
+    // The four-part shape and the significance framing.
+    expect(coder.systemPrompt).toContain('Consequences')
+    expect(coder.systemPrompt).toMatch(/hard or expensive to reverse/i)
+  })
+
+  it('does not put ADRs on @spec — they are @coder-owned (implementation side)', () => {
+    const { spec } = buildAgents(project, paths)
+    expect(spec.systemPrompt).not.toContain('docs/adr/')
+  })
+})
+
 describe('buildAgents — @spec code access (GH #136)', () => {
   it('is code-blind by default: no filesystem, cwd on the glossary', () => {
     const { spec } = buildAgents(project, paths)
