@@ -192,8 +192,8 @@ function PairRow({
           className="coverage-pair"
           title={
             gap
-              ? `${pair.entity} × ${pair.action}: no expectation says what should happen when they interact`
-              : `${pair.entity} × ${pair.action}: covered by an expectation`
+              ? `What happens to ${pair.entity} when ${pair.action} occurs? No expectation says.`
+              : `What happens to ${pair.entity} when ${pair.action} occurs — covered by an expectation.`
           }
         >
           <TermRef name={pair.entity} known={known} onSelect={onSelectTerm} />
@@ -204,7 +204,7 @@ function PairRow({
         {gap ? (
           <span
             className="muted coverage-empty"
-            title={`No expectation names both ${pair.entity} and ${pair.action}, so the outcome is unspecified — “say what should happen” to add one.`}
+            title={`What happens to ${pair.entity} when ${pair.action} occurs? No expectation names both, so the outcome is unspecified — “say what should happen” to add one.`}
           >
             nothing says what should happen
           </span>
