@@ -70,7 +70,8 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  domain TEXT NOT NULL
+  domain TEXT NOT NULL,
+  brief TEXT
 );
 CREATE TABLE IF NOT EXISTS terms (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -135,6 +136,10 @@ export class SqlSpecStore implements SpecStore {
     this.db.exec('PRAGMA foreign_keys = ON')
     if (file !== ':memory:') this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec(SCHEMA)
+    // Migrate a projects table created before the System Brief (GH #143): add the column if absent.
+    // CREATE TABLE IF NOT EXISTS never alters an existing table, so this is the one-way add.
+    const cols = this.db.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>
+    if (!cols.some((c) => c.name === 'brief')) this.db.exec('ALTER TABLE projects ADD COLUMN brief TEXT')
     this.db
       .prepare('INSERT OR IGNORE INTO projects (id, name, domain) VALUES (?, ?, ?)')
       .run(projectId, FALLBACK_PROJECT_INFO.name, FALLBACK_PROJECT_INFO.domain)
@@ -179,11 +184,11 @@ export class SqlSpecStore implements SpecStore {
   // ── Project identity ─────────────────────────────────────────────────────────────────
 
   async projectInfo(): Promise<ProjectInfo> {
-    const row = this.db.prepare('SELECT name, domain FROM projects WHERE id = ?').get(this.projectId) as
-      | { name: string; domain: string }
+    const row = this.db.prepare('SELECT name, domain, brief FROM projects WHERE id = ?').get(this.projectId) as
+      | { name: string; domain: string; brief: string | null }
       | undefined
     if (!row) return FALLBACK_PROJECT_INFO
-    const parsed = parseProjectInfo({ name: row.name, domain: row.domain })
+    const parsed = parseProjectInfo({ name: row.name, domain: row.domain, ...(row.brief ? { brief: row.brief } : {}) })
     return parsed.ok ? parsed.value : FALLBACK_PROJECT_INFO
   }
 
@@ -194,10 +199,17 @@ export class SqlSpecStore implements SpecStore {
   setProjectInfo(info: ProjectInfo): void {
     this.db
       .prepare(
-        `INSERT INTO projects (id, name, domain) VALUES (?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, domain = excluded.domain`,
+        `INSERT INTO projects (id, name, domain, brief) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, domain = excluded.domain, brief = excluded.brief`,
       )
-      .run(this.projectId, info.name, info.domain)
+      .run(this.projectId, info.name, info.domain, info.brief ?? null)
+  }
+
+  async setProjectBrief(brief: string): Promise<void> {
+    // Empty/whitespace clears it (stored NULL), so an un-briefed project reads exactly as before.
+    this.db
+      .prepare('UPDATE projects SET brief = ? WHERE id = ?')
+      .run(brief.trim() ? brief : null, this.projectId)
   }
 
   // ── Low-level ────────────────────────────────────────────────────────────────────────

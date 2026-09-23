@@ -919,6 +919,41 @@ button {
   margin: 6px 0;
 }
 
+/* GH #143: System Brief — product framing above the domain. */
+.system-brief {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--panel);
+}
+
+.system-brief h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.brief-body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.brief-edit textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.brief-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+
 .question,
 .proposal {
   border: 1px solid var(--line);

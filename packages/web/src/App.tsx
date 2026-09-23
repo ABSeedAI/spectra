@@ -25,6 +25,7 @@ import {
   ScenarioPanel,
   reviewChangeset,
   SearchBar,
+  SystemBrief,
   TermDetail,
   TermList,
   useGlossary,
@@ -58,6 +59,7 @@ export function App() {
     commit,
     recordAnswer,
     setBlocking,
+    setBrief,
     raise,
     recheck,
     supersede,
@@ -239,6 +241,8 @@ export function App() {
       )}
 
       {notice && <p className={`notice notice-${notice.tone}`}>{notice.message}</p>}
+
+      <SystemBrief brief={project?.brief} onSave={setBrief} busy={busy} />
 
       <QuestionPanel
         questions={questionFeed.questions}

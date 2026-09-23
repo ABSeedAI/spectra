@@ -55,6 +55,24 @@ describe('FileSystemSpecStore.projectInfo', () => {
     const info = await new FileSystemSpecStore(root, 'proj').projectInfo()
     expect(info.name).toBe('Untitled project')
   })
+
+  it('reads the System Brief when present (GH #143)', async () => {
+    await writeFile(
+      path.join(specs, 'project.json'),
+      JSON.stringify({ name: 'Gamify', domain: 'a gamification API', brief: 'An HTTP API, no UI.' }),
+    )
+    const info = await new FileSystemSpecStore(root, 'proj').projectInfo()
+    expect(info).toEqual({ name: 'Gamify', domain: 'a gamification API', brief: 'An HTTP API, no UI.' })
+  })
+
+  it('setProjectBrief writes then clears the brief, preserving name/domain (GH #143)', async () => {
+    await writeFile(path.join(specs, 'project.json'), JSON.stringify({ name: 'Gamify', domain: 'a gamification API' }))
+    const store = new FileSystemSpecStore(root, 'proj')
+    await store.setProjectBrief('An HTTP API, no UI.')
+    expect(await store.projectInfo()).toEqual({ name: 'Gamify', domain: 'a gamification API', brief: 'An HTTP API, no UI.' })
+    await store.setProjectBrief('')
+    expect(await store.projectInfo()).toEqual({ name: 'Gamify', domain: 'a gamification API' })
+  })
 })
 
 describe('FileSystemSpecStore.commitApplication against an empty store', () => {

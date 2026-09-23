@@ -69,7 +69,10 @@ export interface AgentPaths {
 // The project's name and domain are threaded in, not hardcoded — they come from the SpecStore, so the
 // same coordinator serves whatever glossary it is pointed at.
 const sharedPrompt = (project: ProjectInfo): string => `You are one of two agents in a channel with a human, working on ${project.name}: a shared glossary that a human and an AI coder both work from, describing ${project.domain}. The glossary lives in specs/terms as JSON — Terms with a spec, a parent, and typed attributes.
-
+${project.brief ? `
+What is being built (the System Brief — product framing above the domain: shape, audience, usage, boundaries). This is what the *thing* is, and it steers what @coder builds — read it before the terms:
+${project.brief}
+` : ''}
 The other agent is addressed as @spec or @coder. You cannot message them; only the human can. If work belongs to the other one, say so and let the human hand it over.
 
 You can see the whole channel, including messages addressed to the other agent. Read them for context; act only on what is addressed to you.

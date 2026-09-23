@@ -170,6 +170,13 @@ export interface SpecStore {
    */
   projectInfo(): Promise<ProjectInfo>
 
+  /**
+   * Set (or clear) the project's System Brief (GH #143) — the free-prose product framing that
+   * `projectInfo()` returns and `sharedPrompt` injects. An empty string clears it. Name/domain are
+   * unchanged. Not rev-guarded: project identity is a single small record, not a versioned one.
+   */
+  setProjectBrief(brief: string): Promise<void>
+
   // ── Reads ──────────────────────────────────────────────────────────────────────────
   // Partitioned by state, returning domain objects. No file handles.
   readTerms(): Promise<Glossary>

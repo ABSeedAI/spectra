@@ -86,6 +86,13 @@ describe('SqlSpecStore.projectInfo', () => {
     store.setProjectInfo({ name: 'Acme', domain: 'a billing system' })
     expect(await store.projectInfo()).toEqual({ name: 'Acme', domain: 'a billing system' })
   })
+  it('round-trips the System Brief; empty clears it (GH #143)', async () => {
+    store.setProjectInfo({ name: 'Acme', domain: 'a billing system' })
+    await store.setProjectBrief('An API, no UI.')
+    expect(await store.projectInfo()).toEqual({ name: 'Acme', domain: 'a billing system', brief: 'An API, no UI.' })
+    await store.setProjectBrief('   ')
+    expect((await store.projectInfo()).brief).toBeUndefined()
+  })
 })
 
 describe('SqlSpecStore reads (empty)', () => {

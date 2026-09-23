@@ -45,6 +45,15 @@ export type RecordStatus = 'draft' | 'ready'
 export interface ProjectInfo {
   name: string
   domain: string
+  /**
+   * System Brief (GH #143): free-prose product framing *above* the domain — what is being built
+   * (engine / API / app + UI), for whom, and how it is used. The domain says what the concepts
+   * *mean*; the brief says what the *thing* is, which is the single biggest input to what @coder
+   * builds. Injected into both agents' prompt (see `sharedPrompt`) so it steers every turn, not
+   * just a file an agent might read. Absent until authored. NOT tech/architecture decisions —
+   * those are ADRs (#144).
+   */
+  brief?: string
 }
 
 export type TermType = 'entity' | 'event' | 'function' | 'attribute-type'

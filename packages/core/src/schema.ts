@@ -31,6 +31,7 @@ export const projectInfoSchema = z
   .object({
     name: z.string().min(1),
     domain: z.string().min(1),
+    brief: z.string().optional(),
   })
   .strict()
 

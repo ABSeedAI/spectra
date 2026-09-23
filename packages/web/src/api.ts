@@ -142,6 +142,16 @@ export function setQuestionBlocking(id: string, blocking: boolean): Promise<Comm
   return post(apiPath(`/questions/${encodeURIComponent(id)}/blocking`), { blocking })
 }
 
+/** GH #143: the current project's full identity (incl. the System Brief). */
+export function fetchProject(): Promise<Context['project']> {
+  return get(apiPath(`/project`))
+}
+
+/** GH #143: set (or clear) the System Brief; returns the updated identity. */
+export function setProjectBrief(brief: string): Promise<Context['project']> {
+  return post(apiPath(`/project/brief`), { brief })
+}
+
 /**
  * Reads a draft against the glossary and writes nothing, so a bad one can be killed unborn.
  *
@@ -214,6 +224,8 @@ export const apiTransport: GlossaryTransport = {
   rejectChangeset,
   answerQuestion,
   setQuestionBlocking,
+  fetchProject,
+  setProjectBrief,
   checkExpectation,
   raiseExpectation,
   recheckExpectation,

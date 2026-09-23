@@ -146,6 +146,8 @@ export interface GlossaryTransport {
   /** Point subsequent glossary calls at a project. Synchronous: it only sets the prefix. */
   configureProject(org: string, projectId: string): void
 
+  /** The current project's full identity, incl. the System Brief (#143). Optional: a host without it keeps the list-summary identity. */
+  fetchProject?(): Promise<Context['project']>
   fetchGlossary(): Promise<Glossary>
   fetchChangesets(): Promise<ChangesetFeed>
   fetchQuestions(): Promise<QuestionFeed>
@@ -163,6 +165,8 @@ export interface GlossaryTransport {
   answerQuestion(id: string, chose: string | null, note: string): Promise<AnswerOutcome>
   /** Human override of a question's blocking flag (GH #137). Optional: a host that does not support it leaves it unset. */
   setQuestionBlocking?(id: string, blocking: boolean): Promise<CommitOutcome>
+  /** Set (or clear) the System Brief (GH #143), returning the updated identity. Optional: unset when unsupported. */
+  setProjectBrief?(brief: string): Promise<Context['project']>
 
   checkExpectation(draft: ExpectationDraft, superseding?: string): Promise<CheckReport>
   raiseExpectation(draft: ExpectationDraft, contested?: CheckReport['findings']): Promise<RaiseOutcome>
