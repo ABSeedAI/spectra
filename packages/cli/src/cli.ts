@@ -15,10 +15,12 @@ import {
   ATTACH_USAGE,
   attachComposeArgv,
   attachEnv,
+  type CliProject,
   composeArgv,
   composeBuildArgv,
   composeStackArgv,
   coordinatorOrigin,
+  orgForProject,
   relayUrl,
   parseArgs,
   parseAttachArgs,
@@ -154,6 +156,27 @@ function resolveCoordinator(flag: string | undefined): { origin: string } | { er
 }
 
 /**
+ * Fetch a coordinator's project listing (device-token authed). Shared by `spectra projects` (which
+ * prints it) and `attach`'s org resolution (which looks up one project's org). The three outcomes are
+ * distinguished so each caller can phrase its own message: unreachable (network), an HTTP error (with
+ * the coordinator's own text when present), or the list.
+ */
+async function fetchCliProjects(
+  origin: string,
+  token: string,
+): Promise<{ ok: true; projects: CliProject[] } | { ok: false; unreachable: true } | { ok: false; status: number; error?: string }> {
+  let res: Response
+  try {
+    res = await fetch(`${origin}/api/cli/projects`, { headers: { authorization: `Bearer ${token}` } })
+  } catch {
+    return { ok: false, unreachable: true }
+  }
+  const body = (await res.json().catch(() => ({}))) as { projects?: CliProject[]; error?: string }
+  if (!res.ok) return { ok: false, status: res.status, error: body.error }
+  return { ok: true, projects: body.projects ?? [] }
+}
+
+/**
  * `spectra projects` — list the projects reachable on a coordinator, using the device token saved by
  * `spectra login`. Reads GET /api/cli/projects (device-token authed) and prints org/id + name, so a
  * viewer no longer needs a DevTools `/api/context` lookup to fill `attach --org … --project …`.
@@ -182,19 +205,13 @@ async function runProjects(argv: string[]): Promise<number> {
     return 1
   }
 
-  let res: Response
-  try {
-    res = await fetch(`${origin}/api/cli/projects`, { headers: { authorization: `Bearer ${token}` } })
-  } catch {
-    console.error(`Could not reach ${origin}.`)
+  const listed = await fetchCliProjects(origin, token)
+  if (!listed.ok) {
+    if ('unreachable' in listed) console.error(`Could not reach ${origin}.`)
+    else console.error(listed.error ?? `Could not list projects (${listed.status}).`)
     return 1
   }
-  const body = (await res.json().catch(() => ({}))) as { projects?: Array<{ org: string; id: string; name: string }>; error?: string }
-  if (!res.ok) {
-    console.error(body.error ?? `Could not list projects (${res.status}).`)
-    return 1
-  }
-  const projects = body.projects ?? []
+  const projects = listed.projects
   if (projects.length === 0) {
     console.log(`No projects on ${origin} yet — create one in the app.`)
     return 0
@@ -215,7 +232,7 @@ async function runProjects(argv: string[]): Promise<number> {
  * environment (attach.yaml interpolates them) and runs compose in the foreground, so the agents'
  * logs stream and Ctrl-C stops them. The model credential still rides in via `--env-file`.
  */
-function runAttach(argv: string[]): Promise<number> | number {
+async function runAttach(argv: string[]): Promise<number> {
   const parsed = parseAttachArgs(argv)
   if (parsed.kind === 'help') {
     console.log(ATTACH_USAGE)
@@ -241,6 +258,23 @@ function runAttach(argv: string[]): Promise<number> | number {
   if (!process.env.DEVICE_TOKEN) {
     const stored = tokenFor(configHome(), coord.origin)
     if (stored) patch.DEVICE_TOKEN = stored
+  }
+
+  // Resolve the org from the coordinator when the user pinned neither --org nor ORG — so
+  // `attach --project <id>` works without also knowing the org slug (the common case that used to
+  // pin ORG=local and 404 the profile). --org/ORG still win; a lookup that can't answer (no token,
+  // unreachable, or the id isn't listed) leaves ORG unset, so resolveAttach's `local` default
+  // applies — correct for a genuinely local/self-hosted coordinator.
+  if (!parsed.flags.org && !process.env.ORG) {
+    const projectId = parsed.flags.project ?? process.env.PROJECT_ID
+    const token = parsed.flags.token ?? patch.DEVICE_TOKEN ?? process.env.DEVICE_TOKEN
+    if (projectId && token) {
+      const listed = await fetchCliProjects(coord.origin, token)
+      if (listed.ok) {
+        const org = orgForProject(listed.projects, projectId)
+        if (org) patch.ORG = org
+      }
+    }
   }
 
   const resolved = resolveAttach(parsed, { ...process.env, ...patch }, process.cwd())
