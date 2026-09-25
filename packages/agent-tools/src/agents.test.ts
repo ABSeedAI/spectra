@@ -22,6 +22,16 @@ describe('buildAgents — System Brief injection (GH #143)', () => {
   })
 })
 
+describe('buildAgents — writes-before-prose guidance (GH #156)', () => {
+  it('tells both agents to emit the tool call before the long prose and to split large writes', () => {
+    const { spec, coder } = buildAgents(project, paths)
+    for (const agent of [spec, coder]) {
+      expect(agent.systemPrompt).toContain('Make your writes before your prose')
+      expect(agent.systemPrompt).toMatch(/split it into several smaller writes/i)
+    }
+  })
+})
+
 describe('buildAgents — ADR discipline (GH #144)', () => {
   it('teaches @coder the ADR bar, the record-vs-surface split, and where they live', () => {
     const { coder } = buildAgents(project, paths)
