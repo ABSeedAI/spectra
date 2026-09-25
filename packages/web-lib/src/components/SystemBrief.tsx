@@ -16,12 +16,22 @@ interface SystemBriefProps {
   busy: boolean
 }
 
+/**
+ * Above this many characters the read view is collapsed to a few lines behind a "Show more" toggle,
+ * so a long brief (the useful kind) doesn't dominate the panel. Roughly three lines of prose.
+ */
+const CLAMP_THRESHOLD = 240
+
 export function SystemBrief({ brief, onSave, busy }: SystemBriefProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
+  // Collapsed by default: the brief is reference, so it should sit small until the human wants it.
+  const [expanded, setExpanded] = useState(false)
 
   // Nothing to show and no way to add one — stay out of the way entirely.
   if (!brief && !onSave) return null
+
+  const long = (brief?.length ?? 0) > CLAMP_THRESHOLD
 
   function open() {
     setDraft(brief ?? '')
@@ -65,7 +75,19 @@ export function SystemBrief({ brief, onSave, busy }: SystemBriefProps) {
           </div>
         </div>
       ) : brief ? (
-        <p className="brief-body">{brief}</p>
+        <>
+          <p className={`brief-body${long && !expanded ? ' brief-body--clamped' : ''}`}>{brief}</p>
+          {long && (
+            <button
+              type="button"
+              className="action brief-toggle"
+              onClick={() => setExpanded((value) => !value)}
+              aria-expanded={expanded}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
+        </>
       ) : (
         <p className="muted empty">
           No brief yet — say what's being built (engine / API / app), for whom, and how it's used. It
