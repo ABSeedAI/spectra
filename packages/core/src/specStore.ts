@@ -51,6 +51,7 @@ import type {
   Op,
   ProjectInfo,
   Question,
+  QuestionOption,
   Scenario,
   SourceProblem,
   Term,
@@ -229,6 +230,15 @@ export interface SpecStore {
    * left as-is by callers (blocking is moot once closed), but the store does not forbid it.
    */
   setQuestionBlocking(questionId: string, blocking: boolean, expectedRev?: number): Promise<MutationResult>
+
+  /**
+   * Replace a question's `options` in place, bumping its rev (GH #165) — @spec enriching a rough,
+   * proposal-less question with well-formed options + proposals instead of raising a parallel one.
+   * `expectedRev` guards it, as above. The store only persists: the "still unanswered" precondition
+   * (enrichment is pre-answer, so it never edits a recorded decision) is enforced by the core
+   * `enrichQuestion` op before this is called.
+   */
+  updateQuestionOptions(questionId: string, options: QuestionOption[], expectedRev?: number): Promise<MutationResult>
 
   /** Move a live expectation to retired (bumps its rev). `expectedRev` guards it, as above. */
   retireExpectation(id: string, retired: Expectation, expectedRev?: number): Promise<MutationResult>

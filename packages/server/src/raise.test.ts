@@ -4,7 +4,7 @@ import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
 import type { Author } from '@abseed/spectra-core'
-import { raiseQuestion } from '@abseed/spectra-core'
+import { answerQuestion, enrichQuestion, raiseQuestion } from '@abseed/spectra-core'
 
 const BY: Author = { kind: 'human' }
 
@@ -160,5 +160,54 @@ describe('raiseQuestion', () => {
 
   it('setQuestionBlocking reports not-found for an unknown id', async () => {
     expect(await store.setQuestionBlocking('q-999', true)).toEqual({ ok: false, reason: 'not-found' })
+  })
+})
+
+describe('enrichQuestion (GH #165)', () => {
+  const OPTION = {
+    label: 'Yes — add a moveTask function',
+    detail: 'A Task can change Project.',
+    proposal: {
+      summary: 'Add moveTask(task, project)',
+      ops: [{ op: 'modify_spec' as const, term: 'Task', spec: 'A task, movable between projects.' }],
+      tests: ['moveTask reassigns Task.project'],
+    },
+  }
+
+  it('replaces a rough question\'s options with well-formed ones + proposals, bumping rev', async () => {
+    const raised = await raiseQuestion(store, { ...BASE, asks: 'Enrich me?', options: [] }, { kind: 'coder' })
+    expect(raised.ok).toBe(true)
+    if (!raised.ok) return
+
+    const outcome = await enrichQuestion(store, { id: raised.id, options: [OPTION] }, { kind: 'spec' })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+
+    const written = JSON.parse(await readFile(path.join(specs, 'questions', raised.file), 'utf8'))
+    expect(written.options).toHaveLength(1)
+    expect(written.options[0].label).toBe(OPTION.label)
+    expect(written.options[0].proposal.summary).toBe('Add moveTask(task, project)')
+    expect(written.rev).toBe(2) // raised at 1, enriched to 2
+    expect(written.answer).toBeNull() // still open — enrichment is pre-answer
+  })
+
+  it('refuses to enrich an already-answered question (a decision is not re-opened by editing options)', async () => {
+    const raised = await raiseQuestion(store, { ...BASE, asks: 'Answered already?', options: [OPTION] }, { kind: 'coder' })
+    expect(raised.ok).toBe(true)
+    if (!raised.ok) return
+    const answered = await answerQuestion(store, raised.id, { chose: OPTION.label, note: '', answeredAt: new Date().toISOString() }, { kind: 'human' })
+    expect(answered.ok).toBe(true)
+
+    const outcome = await enrichQuestion(store, { id: raised.id, options: [{ label: 'A different option', proposal: null }] }, { kind: 'spec' })
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.error).toMatch(/already answered/i)
+  })
+
+  it('reports a clear error for an unknown id', async () => {
+    const outcome = await enrichQuestion(store, { id: 'q-999', options: [] }, { kind: 'spec' })
+    expect(outcome).toMatchObject({ ok: false })
+    if (outcome.ok) return
+    expect(outcome.error).toMatch(/no question/i)
   })
 })

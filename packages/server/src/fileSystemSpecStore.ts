@@ -29,6 +29,7 @@ import type {
   Expectation,
   ProjectInfo,
   Question,
+  QuestionOption,
   Scenario,
   SourceProblem,
   Term,
@@ -709,6 +710,21 @@ export class FileSystemSpecStore implements SpecStore {
     if (blocking) next.blocking = true
     else delete next.blocking
     await this.writeJson(path.join(this.questionsDir, entry.file), next)
+    return { ok: true, rev: cas.next, at: entry.file }
+  }
+
+  async updateQuestionOptions(questionId: string, options: QuestionOption[], expectedRev?: number): Promise<MutationResult> {
+    const entry = await this.findQuestionEntry(questionId)
+    if (!entry) return { ok: false, reason: 'not-found' }
+
+    const cas = this.casCheck(entry.question.rev, expectedRev)
+    if (!cas.ok) return { ok: false, reason: 'conflict', currentRev: cas.currentRev }
+
+    await this.writeJson(path.join(this.questionsDir, entry.file), {
+      ...entry.question,
+      options,
+      rev: cas.next,
+    })
     return { ok: true, rev: cas.next, at: entry.file }
   }
 

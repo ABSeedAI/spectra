@@ -75,6 +75,13 @@ describe('buildAgents — @spec code access (GH #136)', () => {
     expect(spec.domainTools).toContain('propose_changeset')
     expect(coder.domainTools).not.toContain('propose_changeset')
   })
+
+  it('grants @spec (not @coder) enrich_question and teaches enriching over raising a duplicate (GH #165)', () => {
+    const { spec, coder } = buildAgents(project, paths)
+    expect(spec.domainTools).toContain('enrich_question')
+    expect(coder.domainTools).not.toContain('enrich_question')
+    expect(spec.systemPrompt).toContain('enrich_question')
+  })
 })
 
 describe('buildAgents — @spec reference tools (GH #145)', () => {
