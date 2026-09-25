@@ -941,6 +941,21 @@ button {
   white-space: pre-wrap;
 }
 
+/* Collapsed read view: clamp a long brief to a few lines behind the "Show more" toggle, so it stays
+   a reference strip rather than a wall of text. Line-clamp works over pre-wrap. */
+.brief-body--clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.brief-toggle {
+  margin-top: 4px;
+  padding: 0;
+}
+
 .brief-edit textarea {
   width: 100%;
   resize: vertical;
