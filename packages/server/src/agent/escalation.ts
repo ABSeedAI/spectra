@@ -57,3 +57,35 @@ export function triagePrompt(raised: string[]): string {
     'Never decide a product fork and never retire anything: a proposal changes nothing until a human applies it.',
   ].join(' ')
 }
+
+/**
+ * The other half of proactive @spec (GH #150): a human's *answer* wakes @spec, where @coder's *raises*
+ * wake it above. The trigger is a question @spec raised that was answered with no pre-drafted proposal
+ * to mint — the open-design fork case, where the decision is now made but nothing bridges it to a
+ * changeset. Same dial ({@link specProactiveEnabled}), same safety: @spec only proposes.
+ */
+export interface AnsweredForProposal {
+  id: string
+  /** The chosen option's label, or null when the human answered in prose without picking one. */
+  chose: string | null
+  note: string
+}
+
+/** The lead-in @spec posts when a decision wakes it — attributed to @spec, so the thread reads in order. */
+export function answerProposalNotice(answered: AnsweredForProposal): string {
+  return `${answered.id} was answered — drafting the changeset that decision implies for you to review.`
+}
+
+/** The instruction @spec acts on after a human answers a question it raised. The turn's prompt, not a human message. */
+export function answerProposalPrompt(answered: AnsweredForProposal): string {
+  const decision = answered.chose
+    ? `the human chose "${answered.chose}"`
+    : 'the human answered in prose without taking one of the options'
+  const note = answered.note.trim() ? ` They noted: "${answered.note.trim()}".` : ''
+  return [
+    `A question you raised, ${answered.id}, was just answered: ${decision}.${note}`,
+    'Read it (read_questions) and propose the changeset that decision now implies, so nothing is left for the human to hand-implement.',
+    'If the decision turns out to need no glossary change, say so plainly and propose nothing.',
+    'Do not decide anything the answer left open, and do not treat this as a new fork to settle: a proposal changes nothing until a human applies it.',
+  ].join(' ')
+}

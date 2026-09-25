@@ -211,3 +211,34 @@ describe('enrichQuestion (GH #165)', () => {
     expect(outcome.error).toMatch(/no question/i)
   })
 })
+
+describe('answerQuestion surfaces the question author (GH #150)', () => {
+  it('reports the raiser and no changeset when a @spec-raised, proposal-less question is answered', async () => {
+    const raised = await raiseQuestion(store, { ...BASE, asks: 'Model rules as code or a DSL?', options: [{ label: 'Hybrid' }] }, { kind: 'spec' })
+    expect(raised.ok).toBe(true)
+    if (!raised.ok) return
+
+    const outcome = await answerQuestion(store, raised.id, { chose: 'Hybrid', note: 'go hybrid', answeredAt: new Date().toISOString() }, BY)
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    // The gate the answer route uses: @spec-raised AND nothing minted → wake @spec to propose.
+    expect(outcome.questionAuthor).toEqual({ kind: 'spec' })
+    expect(outcome.changesetId).toBeUndefined()
+  })
+
+  it('mints a changeset (so no wake needed) when the chosen option carried a proposal', async () => {
+    const proposal = {
+      summary: 'Add moveTask',
+      ops: [{ op: 'modify_spec' as const, term: 'Task', spec: 'A movable task.' }],
+      tests: ['moveTask reassigns project'],
+    }
+    const raised = await raiseQuestion(store, { ...BASE, asks: 'Add moveTask?', options: [{ label: 'Yes', proposal }] }, { kind: 'spec' })
+    expect(raised.ok).toBe(true)
+    if (!raised.ok) return
+
+    const outcome = await answerQuestion(store, raised.id, { chose: 'Yes', note: '', answeredAt: new Date().toISOString() }, BY)
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.changesetId).toBeDefined() // a proposal already bridged the decision — the #150 path is skipped
+  })
+})

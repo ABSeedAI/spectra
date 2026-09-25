@@ -631,6 +631,20 @@ glossary.post('/questions/:id/answer', async (req, res, next) => {
       note: typeof body?.note === 'string' ? body.note : '',
       answeredAt: new Date().toISOString(),
     }, principalOf(res).author)
+
+    // GH #150: a question @spec raised, answered without a pre-drafted proposal to mint, is the case
+    // where the decision would otherwise just sit — the open-design fork @spec deliberately left open.
+    // Wake @spec (opt-in via SPEC_PROACTIVE, applied inside the runner) to propose the changeset the
+    // decision now implies, in the newest unattended session. Fire-and-forget: the wake never delays
+    // or fails the answer, and no eligible session simply means nothing runs.
+    if (outcome.ok && !outcome.changesetId && outcome.questionAuthor?.kind === 'spec') {
+      const projectId = res.locals.projectId as string
+      const answered = { id: outcome.questionId, chose: outcome.answer.chose, note: outcome.answer.note }
+      void (async () => {
+        const target = await targetSessionFor(projectId)
+        if (target) await runner.maybeProposeFromAnswer(target, answered)
+      })().catch((error) => console.error('[proactive-spec] answer-wake failed', error))
+    }
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {
     next(error)
