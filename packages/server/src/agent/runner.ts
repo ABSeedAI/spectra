@@ -17,9 +17,10 @@ import type { TranscriptStore } from '@abseed/spectra-core'
 import type { SpecStoreBackend } from '../backend.js'
 import type { AgentProvider } from './agentProvider.js'
 import { CODER_URL, SPEC_URL, probe } from '../sandbox.js'
-import type { AgentName } from './agents.js'
+import type { AgentDefinition, AgentName } from './agents.js'
 import { qualified, toolsFor } from './tools.js'
 import { isRaiseTool, specProactiveEnabled, triageNotice, triagePrompt } from './escalation.js'
+import { CONTINUATION_PROMPT, afterResult, truncationExhaustedNotice } from './truncation.js'
 
 /** How long a pending approval waits before giving up, so a run cannot hang forever. */
 const APPROVAL_TIMEOUT_MS = 15 * 60 * 1000
@@ -249,116 +250,159 @@ export class AgentRunner {
     })
 
     const key = `${sessionId}:${to}`
-    const resume = this.sdkSessions.get(key)
-    /** Tool calls seen this turn, so a result can be matched back to its call. */
+    /** Tool calls seen this turn, so a result can be matched back to its call. Spans continuations. */
     const openCalls = new Map<string, string>()
 
     try {
-      for await (const message of query({
-        prompt,
-        options: {
-          mcpServers: { blueprints: server },
-          // @spec gets none of these, so it reaches the repo only through domain tools.
-          // @coder gets file access, rooted at app/ by cwd below.
-          tools: agent.builtins,
-          // Only the auto-approved builtins go here. A tool named bare in allowedTools
-          // never reaches canUseTool, so listing Edit would silently skip its card.
-          allowedTools: [...qualified(agent.domainTools), ...agent.autoApprove],
-          canUseTool: this.askPermission(sessionId, to),
-          ...(agent.disallowedTools ? { disallowedTools: agent.disallowedTools } : {}),
-          // Do not inherit the machine's Claude Code settings. Without this the spec agent
-          // picks up whatever MCP servers the user has configured globally — Gmail, Drive,
-          // Calendar — which have no business being reachable from a glossary tool.
-          settingSources: [],
-          systemPrompt: agent.systemPrompt,
-          includePartialMessages: true,
-          cwd: agent.cwd,
-          ...(resume ? { resume } : {}),
-        },
-      })) {
-        if (message.type === 'system' && 'session_id' in message && message.session_id) {
-          this.sdkSessions.set(key, message.session_id as string)
-          continue
+      let turnPrompt = prompt
+      let continuationsUsed = 0
+      // GH #156: a turn that stops at its output limit (max_tokens) is not finished — continue it,
+      // bounded, by resuming the SDK session inside consumeTurn (never restarting: a restart would
+      // replay the prompt and re-fire the unguarded raise_* writes the truncated turn already made).
+      while (true) {
+        const { subtype, stopReason } = await this.consumeTurn(sessionId, to, key, turnPrompt, openCalls, server, agent)
+        const decision = afterResult({ subtype, stopReason, continuationsUsed })
+        if (decision === 'exhausted') {
+          await this.record(sessionId, { author: to, kind: 'error', text: truncationExhaustedNotice(continuationsUsed) })
         }
-
-        if (message.type === 'stream_event') {
-          const event = message.event as { type?: string; delta?: { type?: string; text?: string } }
-          if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-            // Deltas are for live typing only — never persisted, so a reconnect mid-answer
-            // simply waits for the complete message rather than stitching fragments.
-            this.events(sessionId).emit('event', {
-              kind: 'delta',
-              text: event.delta.text ?? '',
-            } satisfies RunnerEvent)
-          }
-          continue
-        }
-
-        if (message.type === 'assistant') {
-          for (const block of message.message.content) {
-            if (block.type === 'text' && block.text.trim()) {
-              await this.record(sessionId, { author: to, kind: 'assistant', text: block.text })
-            }
-            if (block.type === 'tool_use') {
-              openCalls.set(block.id, block.name)
-              if (to === 'coder') this.noteCoderRaise(sessionId, shortName(block.name))
-              await this.record(sessionId, {
-                author: to,
-                kind: 'tool_call',
-                text: shortName(block.name),
-                payload: { input: block.input },
-                toolCallId: block.id,
-                status: 'started',
-              })
-            }
-          }
-          continue
-        }
-
-        if (message.type === 'user') {
-          // Tool results come back as a user turn; settle the call they belong to.
-          const content = message.message.content
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (typeof block === 'object' && block && 'type' in block && block.type === 'tool_result') {
-                const result = block as { tool_use_id: string; content?: unknown; is_error?: boolean }
-                if (!openCalls.has(result.tool_use_id)) continue
-                await this.transcripts.settleToolCall(
-                  result.tool_use_id,
-                  result.is_error ? 'failed' : 'completed',
-                  result.content ?? null,
-                )
-                openCalls.delete(result.tool_use_id)
-                this.events(sessionId).emit('event', {
-                  kind: 'update',
-                  toolCallId: result.tool_use_id,
-                } satisfies RunnerEvent)
-              }
-            }
-          }
-          continue
-        }
-
-        if (message.type === 'result') {
-          if (message.session_id) this.sdkSessions.set(key, message.session_id)
-          if (message.subtype !== 'success') {
-            await this.record(sessionId, {
-              author: to,
-              kind: 'error',
-              text: `The run ended early (${message.subtype}).`,
-            })
-          }
-        }
+        if (decision !== 'continue') break
+        continuationsUsed += 1
+        turnPrompt = CONTINUATION_PROMPT
       }
     } catch (cause) {
       await this.record(sessionId, { author: to, kind: 'error', text: (cause as Error).message })
     } finally {
       // Anything still open died with the run. Leaving it marked `started` is the honest
-      // record — a later resume can see the call may or may not have taken effect.
+      // record — a later resume can see the call may or may not have taken effect. Runs once, after
+      // the last continuation, so a call opened in one pass and settled in the next is not lost.
       for (const [callId] of openCalls) {
         await this.transcripts.settleToolCall(callId, 'failed', { error: 'the run ended before this returned' })
       }
     }
+  }
+
+  /**
+   * Consume one query() turn — the SDK message loop, resumed from this channel's session — and report
+   * the result's subtype and stop_reason so {@link run} can decide whether the turn truncated at the
+   * output limit and should continue (GH #156). Everything it records (assistant text, tool calls and
+   * results, an early-end error) is exactly as it was when this loop lived inline in `run`; only the
+   * bounded continuation loop around it, and this return value, are new.
+   */
+  private async consumeTurn(
+    sessionId: string,
+    to: AgentName,
+    key: string,
+    prompt: string,
+    openCalls: Map<string, string>,
+    server: ReturnType<typeof createSdkMcpServer>,
+    agent: AgentDefinition,
+  ): Promise<{ subtype: string; stopReason: string | null }> {
+    const resume = this.sdkSessions.get(key)
+    // Default to a natural end, so a turn that yields no result message (nothing to continue) simply stops.
+    let subtype = 'success'
+    let stopReason: string | null = null
+    for await (const message of query({
+      prompt,
+      options: {
+        mcpServers: { blueprints: server },
+        // @spec gets none of these, so it reaches the repo only through domain tools.
+        // @coder gets file access, rooted at app/ by cwd below.
+        tools: agent.builtins,
+        // Only the auto-approved builtins go here. A tool named bare in allowedTools
+        // never reaches canUseTool, so listing Edit would silently skip its card.
+        allowedTools: [...qualified(agent.domainTools), ...agent.autoApprove],
+        canUseTool: this.askPermission(sessionId, to),
+        ...(agent.disallowedTools ? { disallowedTools: agent.disallowedTools } : {}),
+        // Do not inherit the machine's Claude Code settings. Without this the spec agent
+        // picks up whatever MCP servers the user has configured globally — Gmail, Drive,
+        // Calendar — which have no business being reachable from a glossary tool.
+        settingSources: [],
+        systemPrompt: agent.systemPrompt,
+        includePartialMessages: true,
+        cwd: agent.cwd,
+        ...(resume ? { resume } : {}),
+      },
+    })) {
+      if (message.type === 'system' && 'session_id' in message && message.session_id) {
+        this.sdkSessions.set(key, message.session_id as string)
+        continue
+      }
+
+      if (message.type === 'stream_event') {
+        const event = message.event as { type?: string; delta?: { type?: string; text?: string } }
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          // Deltas are for live typing only — never persisted, so a reconnect mid-answer
+          // simply waits for the complete message rather than stitching fragments.
+          this.events(sessionId).emit('event', {
+            kind: 'delta',
+            text: event.delta.text ?? '',
+          } satisfies RunnerEvent)
+        }
+        continue
+      }
+
+      if (message.type === 'assistant') {
+        for (const block of message.message.content) {
+          if (block.type === 'text' && block.text.trim()) {
+            await this.record(sessionId, { author: to, kind: 'assistant', text: block.text })
+          }
+          if (block.type === 'tool_use') {
+            openCalls.set(block.id, block.name)
+            if (to === 'coder') this.noteCoderRaise(sessionId, shortName(block.name))
+            await this.record(sessionId, {
+              author: to,
+              kind: 'tool_call',
+              text: shortName(block.name),
+              payload: { input: block.input },
+              toolCallId: block.id,
+              status: 'started',
+            })
+          }
+        }
+        continue
+      }
+
+      if (message.type === 'user') {
+        // Tool results come back as a user turn; settle the call they belong to.
+        const content = message.message.content
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (typeof block === 'object' && block && 'type' in block && block.type === 'tool_result') {
+              const result = block as { tool_use_id: string; content?: unknown; is_error?: boolean }
+              if (!openCalls.has(result.tool_use_id)) continue
+              await this.transcripts.settleToolCall(
+                result.tool_use_id,
+                result.is_error ? 'failed' : 'completed',
+                result.content ?? null,
+              )
+              openCalls.delete(result.tool_use_id)
+              this.events(sessionId).emit('event', {
+                kind: 'update',
+                toolCallId: result.tool_use_id,
+              } satisfies RunnerEvent)
+            }
+          }
+        }
+        continue
+      }
+
+      if (message.type === 'result') {
+        if (message.session_id) this.sdkSessions.set(key, message.session_id)
+        subtype = message.subtype
+        if (message.subtype === 'success') {
+          // stop_reason rides the result message, not the streamed assistant frames (those are null
+          // under includePartialMessages). 'max_tokens' here is a cutoff, not a finish — see run().
+          stopReason = (message as { stop_reason?: string | null }).stop_reason ?? null
+        } else {
+          await this.record(sessionId, {
+            author: to,
+            kind: 'error',
+            text: `The run ended early (${message.subtype}).`,
+          })
+        }
+      }
+    }
+    return { subtype, stopReason }
   }
 
   /**

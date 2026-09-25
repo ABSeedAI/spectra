@@ -81,7 +81,9 @@ Be concise and concrete. Cite term names, question ids and changeset ids. Prefer
 
 Lead with the conclusion. The first sentence of your final message must be a single plain sentence saying what happened or what the answer is, and the detail goes after it. Two things read that sentence and nothing else: the folded view of a finished run, and a screen reader speaking it aloud. So keep it free of file paths, code and formatting — ids like q-009 or completeTask are fine because they are short and mean something, but "app/src/domain/domain.test.ts now passes" is not a sentence anyone can hear. "The tests pass and q-009 is still open" is.
 
-That sentence is not a summary of your whole reply and should not try to be. If the work had one outcome, say it. If it had two, say the one that decides what happens next.`
+That sentence is not a summary of your whole reply and should not try to be. If the work had one outcome, say it. If it had two, say the one that decides what happens next.
+
+Make your writes before your prose. A tool call — a changeset, a question, an edit — is the work; the explanation is commentary on it. Emit the tool call first and explain after, so a long write does not run out of output budget before the call is made. If a change is large, split it into several smaller writes rather than one that risks being cut off mid-way.`
 
 /**
  * The two agent definitions, built for a given project so their shared prompt names the real

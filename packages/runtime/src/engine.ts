@@ -81,6 +81,21 @@ interface Pending {
   timer: NodeJS.Timeout
 }
 
+/**
+ * Continue a turn the model cut off at its output limit (GH #156), instead of treating it as finished.
+ * A max_tokens cutoff arrives as a *success* result with `stop_reason: 'max_tokens'` (there is no
+ * error_max_tokens subtype), so a loop that checks only `subtype` reads a truncated turn as complete —
+ * @coder stops mid-edit with nothing written. This mirrors the in-process runner's truncation handling;
+ * kept inline because the runtime is standalone (its own lockfile, minimal deps).
+ */
+const MAX_TOKEN_CONTINUATIONS = 3
+const CONTINUATION_PROMPT =
+  'Your previous reply was cut off at the output limit before you finished. Continue exactly where you left off and complete it — if you were partway through a tool call or an edit, finish it now. Do not repeat what you already wrote, and do not re-run a tool call that already succeeded.'
+function afterTokenResult(subtype: string, stopReason: string | null, continuationsUsed: number): 'done' | 'continue' | 'exhausted' {
+  if (!(subtype === 'success' && stopReason === 'max_tokens')) return 'done'
+  return continuationsUsed < MAX_TOKEN_CONTINUATIONS ? 'continue' : 'exhausted'
+}
+
 export function createEngine(opts: EngineOptions): Engine {
   const approvalTimeoutMs = opts.approvalTimeoutMs ?? 15 * 60 * 1000
 
@@ -167,7 +182,6 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   async function run(sessionId: string, prompt: string, unattended: boolean, projectId?: string): Promise<void> {
-    const resume = sdkSessions.get(sessionId)
     // A user-global runtime (@spec) picks the project per turn; a pinned one (@coder) has no projectId
     // forwarded — or it equals its own — so the fixed mcpUrl stands.
     const mcpUrl = projectId && opts.mcpUrlFor ? opts.mcpUrlFor(projectId) : opts.mcpUrl
@@ -193,9 +207,13 @@ export function createEngine(opts: EngineOptions): Engine {
       return
     }
 
-    try {
+    const consumeTurn = async (turnPrompt: string): Promise<{ subtype: string; stopReason: string | null }> => {
+      const resume = sdkSessions.get(sessionId)
+      // Default to a natural end, so a turn with no result message (nothing to continue) just stops.
+      let subtype = 'success'
+      let stopReason: string | null = null
       for await (const message of query({
-        prompt,
+        prompt: turnPrompt,
         options: {
           // Over HTTP to the spec tool, not in-process. One definition of these tools exists
           // and it lives with the files they touch. The auth header (when set) rides every tool
@@ -253,10 +271,35 @@ export function createEngine(opts: EngineOptions): Engine {
           }
         } else if (message.type === 'result') {
           if (message.session_id) sdkSessions.set(sessionId, message.session_id)
-          if (message.subtype !== 'success') {
+          subtype = message.subtype
+          if (message.subtype === 'success') {
+            // stop_reason rides the result message, not the streamed frames — 'max_tokens' is a cutoff.
+            stopReason = (message as { stop_reason?: string | null }).stop_reason ?? null
+          } else {
             emit(sessionId, { kind: 'error', text: `The run ended early (${message.subtype}).` })
           }
         }
+      }
+      return { subtype, stopReason }
+    }
+
+    try {
+      let turnPrompt = prompt
+      let continuationsUsed = 0
+      // GH #156: a turn cut off at the output limit is not finished — continue it, bounded, by resuming
+      // the session (never restarting: that would replay the prompt and re-fire any writes already made).
+      while (true) {
+        const { subtype, stopReason } = await consumeTurn(turnPrompt)
+        const decision = afterTokenResult(subtype, stopReason, continuationsUsed)
+        if (decision === 'exhausted') {
+          emit(sessionId, {
+            kind: 'error',
+            text: `The reply was cut off at the output limit and could not finish after ${continuationsUsed} automatic continuation${continuationsUsed === 1 ? '' : 's'}. Ask it to continue, or split the work.`,
+          })
+        }
+        if (decision !== 'continue') break
+        continuationsUsed += 1
+        turnPrompt = CONTINUATION_PROMPT
       }
     } catch (cause) {
       emit(sessionId, { kind: 'error', text: (cause as Error).message })
