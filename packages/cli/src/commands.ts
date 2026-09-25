@@ -341,6 +341,22 @@ export function resolveAttach(
   }
 }
 
+/** One project as `GET /api/cli/projects` (and `spectra projects`) reports it: org slug, id, name. */
+export interface CliProject {
+  org: string
+  id: string
+  name: string
+}
+
+/**
+ * The org slug a project lives under, from a coordinator's project listing — so `attach` need not be
+ * told `--org` when it can look it up by `--project`. Returns undefined when the id isn't in the list
+ * (the caller then falls back to `local`, the genuinely-local/self-hosted default). Pure.
+ */
+export function orgForProject(projects: readonly CliProject[], projectId: string): string | undefined {
+  return projects.find((p) => p.id === projectId)?.org
+}
+
 /**
  * The environment attach.yaml interpolates. The model credential is NOT here — it comes from the
  * shared `spectra.env` via `--env-file`, exactly as the stack commands source `ANTHROPIC_API_KEY`.
@@ -480,7 +496,7 @@ After \`spectra login\`, both --coordinator and --token are inferred from the sa
 or pass --coordinator to choose among several), so attach is just: --org … --project … --dir …
 
 Options:
-  --org <slug>          the remote org (default: local)   (env ORG)
+  --org <slug>          the remote org                    (env ORG; else resolved from --project, else local)
   --server <url>        coordinator origin for tool calls (default: derived from --coordinator)
   --dir <path>          project @coder implements into    (default: current directory)
   --agent <which>       coder | spec | both               (default: both)

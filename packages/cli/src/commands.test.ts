@@ -15,6 +15,7 @@ import {
   composeStackArgv,
   coordinatorOrigin,
   deriveServerUrl,
+  orgForProject,
   relayUrl,
   parseArgs,
   parseAttachArgs,
@@ -304,6 +305,21 @@ describe('spectra attach', () => {
         kind: 'ok',
         options: { coordinator: 'wss://h/api/relay/runtime', server: 'https://h' },
       })
+    })
+  })
+
+  describe('orgForProject', () => {
+    const projects = [
+      { org: 'acme', id: 'acme-9f2', name: 'Acme' },
+      { org: 'globex', id: 'gbx-1', name: 'Globex' },
+    ]
+    it('returns the org of the matching project', () => {
+      expect(orgForProject(projects, 'acme-9f2')).toBe('acme')
+      expect(orgForProject(projects, 'gbx-1')).toBe('globex')
+    })
+    it('returns undefined when the id is not listed (caller falls back to local)', () => {
+      expect(orgForProject(projects, 'nope')).toBeUndefined()
+      expect(orgForProject([], 'acme-9f2')).toBeUndefined()
     })
   })
 

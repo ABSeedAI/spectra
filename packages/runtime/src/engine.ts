@@ -178,9 +178,17 @@ export function createEngine(opts: EngineOptions): Engine {
     } catch (cause) {
       // Worth failing loudly rather than running blind: an agent that silently lost the
       // glossary will implement something plausible and wrong.
+      const reason = (cause as Error).message
+      // A 404 under the `local` org is the classic "wrong org" symptom: the project lives under a
+      // real org but ORG defaulted to `local`, so the profile endpoint has no such project. Point at
+      // the fix instead of a bare "not reachable".
+      const hint =
+        reason.includes('404') && /\/orgs\/local\//.test(mcpUrl)
+          ? " This project may not be in org 'local' — pass --org (or let `spectra attach` resolve it from --project)."
+          : ''
       emit(sessionId, {
         kind: 'error',
-        text: `Cannot reach the spec tool at ${mcpUrl} (${(cause as Error).message}). Not starting a run without it.`,
+        text: `Cannot reach the spec tool at ${mcpUrl} (${reason}). Not starting a run without it.${hint}`,
       })
       return
     }
