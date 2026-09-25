@@ -19,7 +19,15 @@ import type { AgentProvider } from './agentProvider.js'
 import { CODER_URL, SPEC_URL, probe } from '../sandbox.js'
 import type { AgentDefinition, AgentName } from './agents.js'
 import { qualified, toolsFor } from './tools.js'
-import { isRaiseTool, specProactiveEnabled, triageNotice, triagePrompt } from './escalation.js'
+import {
+  type AnsweredForProposal,
+  answerProposalNotice,
+  answerProposalPrompt,
+  isRaiseTool,
+  specProactiveEnabled,
+  triageNotice,
+  triagePrompt,
+} from './escalation.js'
 import { CONTINUATION_PROMPT, afterResult, truncationExhaustedNotice } from './truncation.js'
 
 /** How long a pending approval waits before giving up, so a run cannot hang forever. */
@@ -222,6 +230,20 @@ export class AgentRunner {
     if (this.active.has(`${sessionId}:spec`)) return // @spec busy — skip this batch (a later raise re-wakes it)
     await this.notify(sessionId, 'spec', triageNotice(raised))
     await this.launch(sessionId, triagePrompt(raised), 'spec')
+  }
+
+  /**
+   * Wake @spec to propose the changeset a just-answered question implies (GH #150) — the sibling of
+   * {@link maybeEscalateToSpec}: there @coder's raises wake @spec, here a human's answer does. The
+   * caller (the answer route) decides a given answer is a candidate (a @spec-raised question answered
+   * with no proposal to mint); this applies the same gate the escalation does — proactive on, @spec
+   * free — and, like it, only proposes. No human message: the "why" is the notice, attributed to @spec.
+   */
+  async maybeProposeFromAnswer(sessionId: string, answered: AnsweredForProposal): Promise<void> {
+    if (!specProactiveEnabled()) return
+    if (this.active.has(`${sessionId}:spec`)) return // @spec busy — skip (the human can re-ask)
+    await this.notify(sessionId, 'spec', answerProposalNotice(answered))
+    await this.launch(sessionId, answerProposalPrompt(answered), 'spec')
   }
 
   /** The runtime URL for an agent, or null to run it in-process. The one place the mapping lives. */

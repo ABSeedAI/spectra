@@ -33,6 +33,12 @@ export type AnswerOutcome =
       /** Set when the chosen option carried a proposal. */
       changesetId?: string
       changesetFile?: string
+      /**
+       * Who raised the question being answered — surfaced so a caller can decide whether to wake
+       * that author to act on the decision (GH #150: a @spec-raised question, answered without a
+       * pre-drafted proposal, is the case where @spec should propose the changeset it now implies).
+       */
+      questionAuthor?: Author
     }
 
 export interface AnswerRequest {
@@ -119,5 +125,6 @@ export async function answerQuestion(
     answer,
     ...(answer.changesetId ? { changesetId: answer.changesetId } : {}),
     ...(changesetFile ? { changesetFile } : {}),
+    ...(question.author ? { questionAuthor: question.author } : {}),
   }
 }
