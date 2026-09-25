@@ -42,6 +42,7 @@ import type {
   Expectation,
   ProjectInfo,
   Question,
+  QuestionOption,
   Scenario,
   SourceProblem,
   Term,
@@ -512,6 +513,22 @@ export class SqlSpecStore implements SpecStore {
     const result = this.db
       .prepare('UPDATE questions SET json = ?, rev = ? WHERE project_id = ? AND id = ? AND rev = ?')
       .run(JSON.stringify({ ...question, rev: g.next }), g.next, this.projectId, questionId, row.rev)
+    if (result.changes === 0) return { ok: false, reason: 'conflict', currentRev: this.revOf('questions', questionId) }
+    return { ok: true, rev: g.next, at: questionId }
+  }
+
+  async updateQuestionOptions(questionId: string, options: QuestionOption[], expectedRev?: number): Promise<MutationResult> {
+    const row = this.db.prepare('SELECT rev, json FROM questions WHERE project_id = ? AND id = ?').get(this.projectId, questionId) as
+      | { rev: number; json: string }
+      | undefined
+    if (!row) return { ok: false, reason: 'not-found' }
+    const g = this.guard(row.rev, expectedRev)
+    if (!g.ok) return { ok: false, reason: 'conflict', currentRev: g.currentRev }
+
+    const question = JSON.parse(row.json)
+    const result = this.db
+      .prepare('UPDATE questions SET json = ?, rev = ? WHERE project_id = ? AND id = ? AND rev = ?')
+      .run(JSON.stringify({ ...question, options, rev: g.next }), g.next, this.projectId, questionId, row.rev)
     if (result.changes === 0) return { ok: false, reason: 'conflict', currentRev: this.revOf('questions', questionId) }
     return { ok: true, rev: g.next, at: questionId }
   }

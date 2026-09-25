@@ -21,8 +21,8 @@
  * rather than depend on the SDK.
  */
 import { z } from 'zod'
-import { analyzePending, computeBacklinks, computeCoverage, proposeChangeset, raiseQuestion, raiseScenario, summarizeOp } from '@abseed/spectra-core'
-import type { Author, Changeset, PendingItem, ProposeRequest, Question, RaiseRequest, SpecStore, Term, TranscriptStore } from '@abseed/spectra-core'
+import { analyzePending, computeBacklinks, computeCoverage, enrichQuestion, proposeChangeset, raiseQuestion, raiseScenario, summarizeOp } from '@abseed/spectra-core'
+import type { Author, Changeset, EnrichRequest, PendingItem, ProposeRequest, Question, RaiseRequest, SpecStore, Term, TranscriptStore } from '@abseed/spectra-core'
 
 /** MCP tools answer with content blocks; every tool here returns one JSON or text block. */
 export interface CallResult {
@@ -366,6 +366,43 @@ export function pureTools(store: SpecStore, transcripts: TranscriptStore, author
     },
   )
 
+  const enrichQuestionTool = defineTool(
+    'enrich_question',
+    [
+      'Enrich an existing, unanswered question — add or refine its options, attaching to each spec-changing option the changeset it implies as its `proposal`.',
+      'Use this instead of raising a new question when @coder (or anyone) already raised a sound question but left it rough or proposal-less: fill in the well-formed choices on that same question, so the human sees one reviewable thread, not two cards for the same fork.',
+      'It replaces the whole option set, so include every option you want to keep (re-state the good ones, drop none by accident). Each option: `label`, an optional `detail` naming the tradeoff, and a `proposal` (the changeset that option would raise, or null when it changes no specs). Do not signal a favourite by ordering.',
+      'This is pre-answer only — laying out the fork, not deciding it. An already-answered question is refused: to change a decision, raise a new question. If no suitable open question exists, use raise_question instead.',
+    ].join(' '),
+    {
+      id: z.string().describe('The id of the existing, unanswered question to enrich, e.g. "q-007"'),
+      options: z
+        .array(
+          z.object({
+            label: z.string(),
+            detail: z.string().optional().describe('The tradeoff in plain language, including what this choice costs'),
+            proposal: proposalInput.nullable().optional().describe('The changeset this option would raise. Null when it changes no specs.'),
+          }),
+        )
+        .describe('The full replacement option set; may be empty when only the human can write the spec'),
+    },
+    async (args) => {
+      const outcome = await enrichQuestion(
+        store,
+        {
+          id: args.id,
+          options: args.options as EnrichRequest['options'],
+        },
+        author,
+      )
+      return say(
+        outcome.ok
+          ? { enriched: outcome.id, file: `specs/questions/${outcome.file}`, awaiting: 'a human answer' }
+          : { error: outcome.error },
+      )
+    },
+  )
+
   const raiseScenarioTool = defineTool(
     'raise_scenario',
     [
@@ -446,6 +483,7 @@ export function pureTools(store: SpecStore, transcripts: TranscriptStore, author
     analyzePendingTool,
     searchTranscripts,
     raiseQuestionTool,
+    enrichQuestionTool,
     raiseScenarioTool,
     proposeChangesetTool,
   ]

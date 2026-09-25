@@ -10,8 +10,12 @@ import { pick, pureTools, qualified, withVersion } from './tools.js'
 
 const term = (name: string): Term => ({ name, type: 'entity', spec: `A ${name}`, parent: null, attributes: [], tags: [] })
 
-/** A minimal SpecStore: enough for the pure tools, capturing what gets written. */
-function fakeStore(captured: { changeset?: Changeset; question?: Question; scenario?: Scenario }) {
+/** A minimal SpecStore: enough for the pure tools, capturing what gets written. `existing` seeds a
+ * single question so the enrich path (findQuestion → updateQuestionOptions) has something to act on. */
+function fakeStore(
+  captured: { changeset?: Changeset; question?: Question; scenario?: Scenario; enriched?: Question['options'] },
+  existing?: Question,
+) {
   const empty = { problems: [] as never[] }
   return {
     readTerms: async () => ({ terms: [term('Task'), term('Project')], ...empty }),
@@ -28,6 +32,12 @@ function fakeStore(captured: { changeset?: Changeset; question?: Question; scena
     addQuestion: async (q: Question) => {
       captured.question = q
       return 'q-001.json'
+    },
+    findQuestion: async (id: string) => (existing && existing.id === id ? existing : null),
+    updateQuestionOptions: async (id: string, options: Question['options']) => {
+      if (!existing || existing.id !== id) return { ok: false, reason: 'not-found' as const }
+      captured.enriched = options
+      return { ok: true as const, rev: (existing.rev ?? 1) + 1, at: `${id}.json` }
     },
     nextScenarioId: async () => 's-001',
     addScenario: async (sc: Scenario) => {
@@ -83,6 +93,40 @@ describe('pure tool layer', () => {
     })
     expect(body.raised).toBe('q-001')
     expect(captured.question?.author).toEqual({ kind: 'coder', user: 'usr_42' })
+  })
+
+  it('enrich_question replaces an open question’s options with proposals', async () => {
+    const existing: Question = {
+      id: 'q-007',
+      asks: 'Can a Task move between Projects?',
+      because: 'the spec is silent',
+      raisedBy: { pass: 'implementation', terms: ['Task'] },
+      options: [], // raised rough, proposal-less — the case enrich exists for
+      answer: null,
+    }
+    const captured: { enriched?: Question['options'] } = {}
+    const tools = withVersion(pureTools(fakeStore(captured, existing), fakeTranscripts, author), version)
+    const { body } = await call(tools, 'enrich_question', {
+      id: 'q-007',
+      options: [
+        {
+          label: 'Yes — add moveTask',
+          detail: 'a Task can change Project',
+          proposal: { summary: 'Add moveTask', ops: [{ op: 'modify_spec', term: 'Task', spec: 'A movable task.' }], tests: ['moveTask reassigns project'] },
+        },
+      ],
+    })
+    expect(body.enriched).toBe('q-007')
+    expect(captured.enriched).toHaveLength(1)
+    expect(captured.enriched?.[0]!.proposal?.summary).toBe('Add moveTask')
+  })
+
+  it('enrich_question refuses an unknown question, writing nothing', async () => {
+    const captured: { enriched?: Question['options'] } = {}
+    const tools = withVersion(pureTools(fakeStore(captured), fakeTranscripts, author), version)
+    const { body } = await call(tools, 'enrich_question', { id: 'q-404', options: [] })
+    expect(body.error).toMatch(/no question/i)
+    expect(captured.enriched).toBeUndefined()
   })
 
   it('raise_scenario writes a cross-entity scenario, attributed to the author', async () => {

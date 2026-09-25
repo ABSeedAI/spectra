@@ -323,6 +323,23 @@ describe('SqlSpecStore setQuestionBlocking (GH #137)', () => {
   })
 })
 
+describe('SqlSpecStore updateQuestionOptions (GH #165)', () => {
+  const options = [{ label: 'Yes', detail: 'do it', proposal: null }]
+
+  it('replaces the option set, bumping rev', async () => {
+    await store.addQuestion(question('q-001'))
+    expect(await store.updateQuestionOptions('q-001', options)).toMatchObject({ ok: true, rev: 2 })
+    expect((await store.findQuestion('q-001'))?.options).toEqual(options)
+  })
+
+  it('reports not-found for an unknown id and guards on a stale expectedRev', async () => {
+    expect(await store.updateQuestionOptions('q-404', options)).toEqual({ ok: false, reason: 'not-found' })
+    await store.addQuestion(question('q-001'))
+    await store.updateQuestionOptions('q-001', options) // rev 1 → 2
+    expect(await store.updateQuestionOptions('q-001', options, 1)).toEqual({ ok: false, reason: 'conflict', currentRev: 2 })
+  })
+})
+
 describe('SqlSpecStore retire / rewrite expectation + CAS', () => {
   it('retires a live expectation, bumping rev; guards on expectedRev', async () => {
     await store.addExpectation(expectation('e-001'))
